@@ -1,0 +1,5107 @@
+转载来源http://anku.kk.pingku.com/
+
+
+BitTorrent 协议规范（BT协议集合）一
+BitTorrent 是一种分发文件的协议。它通过URL来识别内容，并且可以无缝的和web进行交互。它基于HTTP协议，它的优势是：如果有多个下载者并发的下载同一个文件，那么，每个下载者也同时为其它下载者上传文件，这样，文件源可以支持大量的用户进行下载，而只带来适当的负载的增长。（译注：因为大量的负载被均衡到整个系统中，所以提供源文件的机器的负载只有少量增长）
+
+一个BT文件分布系统由下列实体组成：
+一个普通的web服务器
+一个静态的“元信息”文件
+一个跟踪（tracker）服务器
+终端用户的web浏览器
+终端下载者
+
+理想的情况是多个终端用户在下载同一个文件。
+要提供文件共享，那么一台主机需要执行以下步骤：
+Ø运行一个 tracker服务器（或者，已经有一个tracker服务器在运行了也可以）
+Ø运行一个web服务器，例如apache，或者已经有一个web服务器在运行了。
+Ø在web服务器上，将文件扩展名.torrent 和MIME类型 application/x-bittorrent关联起来（或者已经关联了）
+Ø根据 tracker服务器的 URL 和要共享的文件来创建一个“元信息”文件（.torrent）。
+Ø将“元信息”文件发布到web服务器上
+Ø在某个web页面上，添加一个到“元信息”文件的链接。
+Ø运行一个已经拥有完整文件的下载者（被成为’origin’，或者’seed’，种子）
+
+要开始下载文件，那么终端用户执行以下步骤：
+Ø安装 BT（或者已经安装）
+Ø访问提供 .torrent 文件的web服务器
+Ø点击到 .torrent 文件的链接（译注：这时候，bt会弹出一个对话框）
+Ø选择要把下载的文件保存到哪里？或者是一次断点续传
+Ø等待下载的完成。
+Ø结束bt程序的运行（如果不主动结束，那么bt会一直为其它人提供文件上传）
+
+各个部分之间的连通性如下：
+网站负责提供一个静态的文件，而把BT辅助程序（客户端）放在客户端机器上。
+Trackers从所有下载者处接收信息，并返回给它们一个随机的peers的列表。这种交互是通过HTTP或HTTPS协议来完成的。
+下载者周期性的向tracker登记，使得tracker能了解它们的进度；下载者之间通过直接连接进行数据的上传和下载。这种连接使用的是 BitTorrent 对等协议，它基于TCP。
+Origin只负责上传，从不下载，因为它已经拥有了完整的文件。Origin是必须的。
+
+元文件和tracker的响应都采用的是一种简单、有效、可扩展的格式，被称为bencoding，它可以包含字符串和整数。由于对不需要的字典关键字可以忽略，所以这种格式具有可扩展性，其它选项以后可以方便的加进来。
+
+Bencoding格式如下：
+对于字符串，首先是一个字符串的长度，然后是冒号，后面跟着实际的字符串，例如：4:spam，就是“ spam”
+整数编码如下，以 ‘i’ 开始，然后10进制的整数值，最后以’e’结尾。例如，i3e表示3，I-3e表示-3。整数没有大小限制。I-0e是无效的。除了 i0e外，所有以0起始的整数都无效。I0e当然表示0。
+列表编码如下，以’l’开始，接下来是列表值的编码（也采用bencoded编码），最后以’e’结束。例如：l4:spam4:eggse 表示 [‘spam’, ‘eggs’]。
+字典编码如下，以’d’开始，接下来是可选的keys和它对应的值，最户以’e’结束。例如：d3:cow3:moo4:spam4: eggse，表示{‘cow’:’moo’,’spam’:’eggs’}，而d4:spaml1:al:bee 表示 {‘spam’:[‘a’,’b’]}。键值必须是字符串，而且已经排序（并非是按照字母顺序排序，而是根据原始的字符串进行排序）。
+
+元文件是采用bencoded编码的字典，包括以下关键字：
+
+announce tracker的服务器
+
+info 它实际上是一个字典，包括以下关键字：
+
+Name：
+一个字符串，在保存文件的时候，作为一个建议值。仅仅是个建议而已，你可以用别的名字保存文件。
+Piece length：
+为了更好的传输，文件被分隔成等长的片断，除了最后一个片断以外，这个值就是片断的大小。片断大小几乎一直都是2的幂，最常用的是 256k（BT的前一个版本3.2，用的是1M作为默认大小）
+Pieces：
+一个长度为20的整数倍的字符串。它将再被分隔为20字节长的字符串，每个子串都是相应片断的hash值。
+
+此外，还有一个length或files的关键字，这两个关键字只能出现一个。如果是length，那么表示要下载的仅仅是单个文件，如果是files那么要下载的是一个目录中的多个文件。
+如果是单个文件，那么length是该文件的长度。
+
+为了能支持其它关键字，对于多个文件的情况，也把它当作一个文件来看，也就是按照文件出现的顺序，把每个文件的信息连接起来，形成一个字符串。每个文件的信息实际上也是一个字典，包括以下关键字：
+Length：文件长度
+Path：子目录名称的列表，列表最后一项是文件的实际名称。（不允许出现列表为空的情况）。
+Name：在单文件情况下，name是文件的名称，而在多文件情况下，name是目录的名称。
+
+Tracker查询。Trakcer通过HTTP的GET命令的参数来接收信息，而响应给对方（也就是下载者）的是经过bencoded编码的消息。注意，尽管当前的tracker的实现需要一个web服务器，它实际上可以运行的更轻便一些，例如，作为apache的一个模块。
+
+Tracker GET requests have the following keys:
+
+发送给Tracker的GET请求，包含以下关键字：
+
+Info_hash：
+元文件中info部分的sha hash，20字节长。这个字符创几乎肯定需要被转义（译注：在URL中，有些字符不能出现，必须通过unicode进行编码）
+
+Peer_id：
+下载者的id，一个20字节长的字符串。每个下载者在开始一次新的下载之前，需要随机创建这个id。这个字符串通常也需要被转义。
+
+Ip：
+一个可选的参数，给出了peer的ip地址（或者dns名称？）。通常用在origin身上，如果它和tracker在同一个机器上。
+
+Port：
+peer所监听的端口。下载者通常在在 6881 端口上监听，如果该端口被占用，那么会一直尝试到 6889，如果都被占用，那么就放弃监听。
+
+Uploaded：
+已经上载的数据大小，十进制表示。
+
+Downloaded：
+已经下载的数据大小，十进制表示
+
+Left：
+该peer还有多少数据没有下载完，十进制表示。注意，这个值不能根据文件长度和已下载数据大小计算出来，因为很可能是断点续传，如果因为检查文件完整性失败而必须重新下载的时候，这也提供了一个机会。
+
+Event：
+一个可选的关键字，值是started、compted或者stopped之一（也可以为空，不做处理）。如果不出现该关键字，。在一次下载刚开始的时候，该值被设置为started，在下载完成之后，设置为completed。如果下载者停止了下载，那么该值设置为stopped。
+
+Tracker的响应是用bencoded编码的字典。如果tracker的响应中有一个关键字failure reason，那么它对应的是一个字符串，用来解释查询失败的原因，其它关键字都不再需要了。否则，它必须有两个关键字：Interval：下载者在两次发送请求之间的时间间隔。Peers:一个字典的列表，每个字典包括以下关键字：Peer id，Ip，Port，分别对应peer所选择的id、ip地址或者dns名称、端口号。注意，如果某些事件发生，或者需要更多的peers，那么下载者可能不定期的发送请求，
+
+（downloader 通过 HTTP 的GET 命令来向 tracker 发送查询请求，tracker 响应一个peers 的列表）
+
+如果你想对元信息文件或者tracker查询进行扩展，那么需要同Bram Cohen协调，以确保所有的扩展都是兼容的。
+
+BT对等协议基于TCP，它很有效率，并不需要设置任何socket选项。（译注：BT对等协议指的是peer与peer之间交换信息的协议）
+对等的两个连接是对称的，消息在两个方向上同样的传递，数据也可以在任何一个方向上流动。
+一旦某个peer下载完了一个片断，并且也检查了它的完整性，那么它就向它所有的peers宣布它拥有了这个片断。
+
+连接的任何一端都包含两比特的状态信息：是否choked，是否感兴趣。Choking是通知对方，没有数据可以发送，除非unchoking发生。Choking的原因以及技术后文解释。
+
+一旦一端状态变为interested，而另一端变为非choking，那么数据传输就开始了。（也就是说，一个peer，如果想从它的某个 peer那里得到数据，那么，它首先必须将它两之间的连接设置为 interested，其实就是发一个消息过去，而另一个peer，要检查它是否应该给这个家伙发送数据，如果它对这个家伙是 unchoke，那么就可以给它发数据，否则还是不能给它数据）Interested状态必须一直被设置――任何时候。要用点技巧才能比较好的实现这个目的，但它使得下载者能够立刻知道哪些peers将开始下载。
+
+对等协议由一个握手开始，后面是循环的消息流，每个消息的前面，都有一个数字来表示消息的长度。握手的过程首先是先发送19，然后发送“BitTorrent protocol”。19就是“BitTorrent protocol”的长度。
+后续的所有的整数，都采用big-endian 来编码为4个字节
+在协议名称之后，是8个保留的字节，这些字节当前都设置为0。
+接下来对元文件中的 info 信息，通过 sha1 计算后得到的 hash值，20个字节长。接收消息方，也会对 info 进行一个 hash 运算，如果这两个结果不一样，那么说明对方要的文件，并不是自己所要提供的，所以切断连接。
+
+接下来是20个字节的 peer id。
+这就是握手过程
+
+接下来就是以消息长度开始的消息流，这是可选的。长度为0 的消息，用于保持连接的活动状态，被忽略。通常每隔2分钟发送一个这样的消息。
+
+其它类型的消息，都有一个字节长的消息类型，可能的值如下：
+
+‘choke’, ‘unchoe’, ‘interested’, not interested’类型的消息不再含有其它数据了。
+
+‘bitfield’永远也仅仅是第一个被发送的消息。它的数据实际是一个位图，如果downloader已经发送了某个片断，那么对应的位置1，否则置0。Downloaders如果一个片断也没有，可以忽略这个消息。（通过这个消息，能知道什么了？）
+
+‘have’类型的消息，后面的数据是一个简单的数字，它是下载者刚刚下载完并检查过完整性的片断的索引。（由此，可以看到，peer通过这种消息，很快就相互了解了谁都有什么片断）
+
+‘request’类型的消息，后面包含索引、开始位置和长度)长度是2的幂。当前的实现都用的是215 ，而关闭连接的时候，请求一个超过2 17的长度。(这种类型的消息，就是当一个peer希望另一个peer给它提供片断的时候，发出的请求)
+
+‘cancel’类型的消息，它的数据和’request’消息一样。它们通常只在下载趋向完成的时候发送，也就是在‘结束模式“阶段发送。在一次下载接近完成的时候，最后的几个片断需要很长时间才能下载完。为了确保最后几个片断尽快下载完，它向所有的peers发送下载请求。为了保证这不带来可怕的低效，一旦某个片断下载完成，它就其它peers发送’cancel’消息。（意思就是说，我不要这个片断了，你要是准备好了，也不用给我发了，可以想象，如果对方还是把数据发送过来了，那么这边必须忽略这些重复的数据）。
+
+‘piece’类型的消息，后面保护索引号、开始位置和实际的数据。注意，这种类型的消息和 ‘request’消息之间有潜在的联系（译注：因为通常有了request消息之后，才会响应‘piece’消息）。如果choke和unchoke消息发送的过于迅速，或者，传输速度变的很慢，那么可能会读到一些并不是所期望的片断。（ 也就是说，有时候读到了一些片断，但这些片断并不是所想要的）
+
+BitTorrent 协议规范（BT协议集合）二
+这个翻译版本由孤波独立完成
+原文见http://bitconjurer.org/BitTorrent/protocol.html
+作者Bram Cohen
+孤波享有对该翻译版本解释权修改权
+非商业引用请注明译者
+
+
+
+BitTorrent协议详解
+
+BitTrrent(简称BT，比特洪流)是一个文件分发协议，它通过URL识别内容并且和网络无缝结合。它在HTTP平台上的优势在于，同时下在一个文件的下载者在下载的同时不断互相上传数据，使文件源可以在很有限的负载增加的情况下支持大量下载者同时下载。
+
+一个BT式文件分发需要以下实体：
+
+·一个普通网络服务器
+·一个静态元信息文件
+·一个BT Tracker
+·一个“原始”下载者
+·网络终端浏览者
+·网络终端下载者
+
+这里假设理想情况下一个文件有多个下载者。
+
+架设一个BT服务器步骤如下：
+
+1.开始运行Tracker（已运行的跳过这一步）；
+2.开始运行普通网络服务器端程序，如Apache，已运行的跳过这一步；
+3.在网络服务器上将.torrent文件关联到Mimetype类型application/x-bittorrent（已关联的跳过这一步）；
+4.用要发布的完整文件和Tracker的URL创建一个元信息文件（.torrent文件）；
+5.将元信息文件放置在网络服务器上；
+6.在网页上发布元信息文件（.torrent文件）链接；
+7.原始下载者提供完整的文件（原本）。
+
+通过BT下载步骤如下：
+
+1.安装BT客户端程序（已安装的跳过这一步）；
+2.上网；
+3.点击一个链到.torrent文件的链接；
+4.选择本地存储路径，选定需要下载的文件（对有选择下载功能的BT客户端用户）；
+5.等待下载完成；
+6.用户退出下载（之前下载者不停止上传）。
+
+连接状况如下：
+
+·网站正常提供静态文件连接，并且启动客户端上的BT程序；
+·Tracker即时接收所有下载者信息，并且给每个下载者一份随机的peer列表。通过HTTP或HTTPS协议实现；
+·下载者每隔一段时间连一次Tracher，告知自己的进度，并和那些已经直接连接上的peer进行数据的上传下载。这些连接遵循BitTorrent peer协议，通过TCP协议进行通信。
+·原始下载者只上传不下载，他拥有整个文件，所以很必要向网络中传输完文件的所有部分。在一些人气很旺的下载中，原始下载者经常可以在较短的时间内退出上传，由其它已经下载到整个文件的下载者继续提供上传。
+
+元信息文件和Tracker的回应信息都以一种简单高效可扩展的格式（Bencoding，B编码）传送。B编码过的信息就是以包含字符串和整型数据的字典和列表的嵌套（像在Python中一样）,可扩展性是指可以通过减少字典忽略的关键值来添加新的特性。
+
+B编码规则如下：
+
+·字符串表示为十进制数的既定字符串长度加冒号再跟原字符串。
+如4:spam就相当于'spam'。
+·整型数据表示成前面加'i'后面加'e'中间是十进制数，如i3e就相当于3，i-3e就是-3。整型数据没有长度限制。i-0e无效，所有以'i0'开头的除了代表0的i0e，其它都无效。
+·列表编码为一个'l'开头后面跟它所包含的项目（已经编码过）最后加一个'e'，比如l4:spam4:eggse就等于['spam', 'eggs']。
+·字典编码为一个'd'开头后面跟一个交替关键值（key）及其对应值的列表最后加一个'e'。
+如：d3:cow3:moo4:spam4:eggse相当于{'cow': 'moo', 'spam': 'eggs'}
+d4:spaml1:a1:bee相当于{'spam': ['a', 'b']}
+关键值必须是处理过的字符串（用原始字符串编码的，而且不是数字字母混合编码的）。
+
+元信息文件就是B编码的有以下关键值的字典：
+
+announce（声明）
+
+Tracker的URL。
+
+info（信息）
+
+此关键值对应一个字典包含以下描述的关键值:
+
+关键值name对应一个字符串，代表默认的下载文件或存成目录的名字。它是纯粹建议性的。
+
+关键值piece length（块长）对应文件分割成的块的字节数。出于传输需要，文件被分割成大小相等的块，除了最后一块通常会小一些。块长一般来说是2的权值，大部分设块长为256K(2的18次幂)。
+
+关键值pieces（块）对应一个字符串，此字符串长度是20的倍数。它可以再分成每20字节一段的多个字符串，分别对应块在索引中的SHA1校验码（hash）。
+
+还有关键值length（长度）和files（文件），它们不能同时出现也不能都不出现。当length出现说明这个元信息文件只是单文件下载，否则说明是多文件的目录结构下载。
+
+单文件情况下，length对应文件长度的字节数。
+
+多文件情况被看作是把许多单文件按文件列表中的顺序连成一个大文件下载，而关键值files就对应文件列表，是一个字典的列表，其中每个字典又包含以下关键值：
+
+length（长度）
+
+文件长度的字节数。
+
+path（路径）
+
+一个包含字符串的列表，字符串就是子目录名，最后一项的字符串是文件名。
+（一个长度为零的length表单是错误的。）
+
+在单文件情况下，关键值name是文件名；多文件情况下，它就成了目录名。
+
+Tracker质询是双向的。Tracker通过HTTP GET参数获得信息，然后返回一个B编码后的信息。尽管Tracker需要在服务器端执行，但它运行流畅像Apache的一个模块。
+
+Tracker的GET请求有如下关键值：
+
+info_hash
+
+20字节长的SHA1验证码，来自B编码过的元信息文件中的info值下，是元信息文件的一个支链。这个值是自动转换的。
+
+peer_id
+
+一个20字节长的字符串，是每个用户开始下载时随机生成的ID。这个值也是是自动转换的。
+
+ip
+
+一个可选择的参数给出peer所在的IP（或DNS主机名），一般是和Tracker同机器的原始下载者得到后以便散发文件。
+
+port
+
+监听端口，官方默认的是从6881端口开始试，如果端口被占用则依次向后推一个端口找空闲端口，到6889端口为止。
+
+uploaded
+
+目前总上传量，编码为十进制ASCII码。
+
+downloaded
+
+目前总下载量，编码为十进制ASCII码。
+
+left
+
+未下载的字节数，编码为十进制ASCII码。这个数不是通过文件长度和已下载数算出来的，因为文件可能在被续传，还有一些已经下载的数据不能通过完整性检查必须重新下载。
+
+event
+
+这是个选择性的关键值，选项有started，completed或stopped（或empty，等同于没有运行）。如果没有运行，这个声明会定期间隔一定时间发出。开始下载时发出started值，完成下载时发出completed。当文件完整后再开始，没有completed发出，下载者中止下载时发出stopped。
+
+Tracker的回应也是B编码字典。如果Tracker回应中有关键值failure reason（失败原因），就会对应一个人可以读懂的字符串信息解释质询失败的原因，不需要其它关键值。否则，回应必须有两个关键值：interval （间隔）对应下载者定期发出请求的间隔秒数；peers，peer自选ID，IP地址或DNS主机名的字符串和端口号。记住peers不会完全按照计划的间隔发送请求，假如他们发生一个事件或者想要更多的peers。
+
+如果你想对元信息文件或者Tracker质询进行扩展，请与Bram Cohen进行协调，确保所有扩展都兼容。
+
+BitTorrent peer协议通过TCP协议进行操作。它不用调节任何socket选项就可以流畅运行。
+
+peer之间的连接是对称的。两个方向送出的信息要协调一致，数据可以流入任一方。
+
+peer协议指一个peer从零开始下载，每得到元信息文件索引中所描述的一个块且验证码一致，就向所有peer声明已得到此块。
+
+连接的两个终端有2个状态指标，被阻塞与否，被关注与否，被阻塞（choking）是表明在恢复通畅之前数据不再发出的通知。发生阻塞的原因和技术问题稍后会提到。
+
+数据传输发生在一方关注对方且对方没有阻塞的情况下。关注状态必须一致保持-如果一个没阻塞的peer没有别人需要的数据，别人对他就会失去关注，转而关注那些正在阻塞的peer。完全执行这种条件需要非常慎重，但这样的确可以让下载者知道哪些peer在阻塞消失后可以马上开始下载。
+
+连接会逐渐断开不感兴趣和阻塞的peer。
+
+当数据传输时，下载者要备好多份请求排成队列，以获得较高的TCP传输效率（这叫“管运请求”）。另一方面，不能被写入TCP缓冲区的请求要被立即排入内存，而不是一个应用程序级的网络缓冲，一旦阻塞出现，这些请求全部丢弃。
+
+
+peer连线协议包括一次握手跟着不断的大小一致且确定的信息流。握手的开始是字符十九（十进制），跟着是字符串'BitTorrentprotocol'。开头的字符是长度固定的，希望其它新协议也能这样以便区分。
+
+此后所有送入协议的整数都编码为4字节大中止端。
+
+在现有的应用中头部数据之后是8个全部预留为0的字节，若果你想通过改变这8个预留字节以扩展协议，请与Bram Cohen协调以保证所有扩展兼容。
+
+然后是来自元信息文件中B编码的info值中长20字节的SHA1验证码（和info_hash向Tracker声明的值相同，但这里是原始值那里是引用）。如果双方的值不同，连接断开。一个例外是下载者想只用一个端口进行多个连接下载，它们会先从接入连接得到一个验证码，然后和列表里面的对照，有相同的就答复。
+
+验证码之后是20字节的peer id，它包含在Tracker回应的peer列表中，在向Tracker的请求中被报告。如果接受方peer id不符合发送方希望，连接断开。
+
+握手完毕。之后是长度固定的交互信息流。零长度信息用来保持连接，被忽略。这种信息一般2分钟发出一次，但是在等待数据期间很容易超时。
+
+所有非保持连接用信息开头的字节给出类型，可能值如下：
+
+·0-阻塞
+·1-通畅
+·2-关注
+·3-不关注
+·4-有
+·5-比特组
+·6-请求
+·7-块
+·8-取消
+
+“阻塞”、“通畅”、“关注”和“不关注”类信息没有荷载。
+
+“比特组”类信息仅作为首信息发出。它负载一个比特组，下载者有索引的设为1，其它为0。开始下载时没有任何数据的下载者跳过“比特组”信息。首字节高位到低位对应索引0-7，依次类推，第二字节对应8-15，等等。尾部的剩余的比特位设为0。
+
+“已有”类信息负载一个数，即刚下载并核对完验证码的索引数。
+
+“请求”类信息包括包含一个索引，开始和长度。后两者是字节偏移。长度一般是2的权值除非被文件尾截断。现行一般是2的15次幂，并且关闭大于2的17次幂长度的连接。
+
+“取消”类信息负载和“请求”类信息有一样的负载。它通常在下载接近完成即“最后阶段”发出。当下载快要完成时，剩下几个块有都从同一个线程下载的趋向，这样会很慢。为了确保剩余块下载迅速，一旦还没有决定剩余块的下载请求向谁发出，先向所有他正在从对方下载数据的连接者发送要求所有剩余块的请求。为避免低效，每当一个块开始下载就向其他peer发出取消信息。
+
+“块”类信息包含一个索引，开始和块。记住它和“请求”类信息是相关的。当传输速度很慢或“阻塞”“通畅”类信息高频率交替发出或两者同时发生，可能会载到一个不需要的块。
+
+下载者下载块的顺序是随机的，这样适当防止下载者与其他Peers仅有相同的块子集或超集。
+
+阻塞的发生有很多原因。TCP协议的信息拥挤控制在即时向多连接发送信息的过程中表现极差。同时，阻塞的存在使下载者们能够用以牙还牙式的算法来确保稳定的下载速率。
+
+下面描述的阻塞算法是目前基础的配置。重要的是所有新算法不光要在包含全部扩展算法的网络中运行良好，也要在主要包含这个基础算法的网络中运行良好。
+
+一个优秀的阻塞算法有许多标准。它必须封锁一定同时上传的数量以获得良好的TCP表现，还要避免频繁的堵塞和通畅交替，即所谓“纤维化”。它应该用数据交换报答给自己数据的peer。最后，它还应该偶尔尝试一下与未使用过的peer端连接，找出比现有连接好的连接，这叫做尝试性疏通。
+
+现行的阻塞算法避免纤维化的手段是每10秒转换被阻塞的名单。疏通4个自己关注且能从他们身上得到最高下载速率的peer，进行上传和数据交换。有较高上传速率但是不被关注下载者的peer被疏通，一旦这些peer开始被关注，那些上传率最低的peer的就被阻塞。如果下载者有了完整的文件，他用自己的上传率而不是下载率来决定疏通谁的连接。
+
+在尝试性疏通中，任何一次中都有一个peer被疏通不管他的上传率如何（如果被关注，他会成为4个提供下载的peer之一）。被尝试性疏通的这种peer每30秒轮换一次。为了给它们一个上传整一个块的机会，新连接会以轮换中尝试性疏通次数的3倍开始连接。
+
+BitTorrent 协议规范（BT协议集合）三
+Bittorrent udp-tracker protocol extension
+Contents
+
+introduction
+connecting
+Client sends packet:
+Server replies with packet:
+announcing
+Client sends packet:
+Server replies with packet:
+scraping
+Client sends packet:
+Server replies with packet:
+errors
+server replies packet:
+actions
+extensions
+authentication
+credits
+introduction
+A tracker with the protocol "udp://" in its URI is supposed to be contacted using this protocol.
+
+This protocol is supported by xbt-tracker.
+
+For additional information and descritptions of the terminology used in this document, see the protocol specification
+
+All values are sent in network byte order (big endian). The sizes are specified with ANSI-C standard types.
+
+If no response to a request is received within 15 seconds, resend the request. If no reply has been received after 60 seconds, stop retrying.
+
+connecting
+Client sends packet:size name description
+int64_t connection_id Must be initialized to 0x41727101980 in network byte order. This will identify the protocol.
+int32_t action 0 for a connection request
+int32_t transaction_id Randomized by client.
+
+Server replies with packet:size name description
+int32_t action Describes the type of packet, in this case it should be 0, for connect. If 3 (for error) see errors.
+int32_t transaction_id Must match the transaction_id sent from the client.
+int64_t connection_id A connection id, this is used when further information is exchanged with the tracker, to identify you. This connection id can be reused for multiple requests, but if it's cached for too long, it will not be valid anymore.
+
+announcing
+Client sends packet:size name description
+int64_t connection_id The connection id acquired from establishing the connection.
+int32_t action Action. in this case, 1 for announce. See actions.
+int32_t transaction_id Randomized by client.
+int8_t[20] info_hash The info-hash of the torrent you want announce yourself in.
+int8_t[20] peer_id Your peer id.
+int64_t downloaded The number of byte you've downloaded in this session.
+int64_t left The number of bytes you have left to download until you're finished.
+
+int64_t uploaded The number of bytes you have uploaded in this session.
+int32_t event The event, one of
+
+none = 0
+completed = 1
+started = 2
+stopped = 3
+
+uint32_t ip Your ip address. Set to 0 if you want the tracker to use the sender of this udp packet.
+uint32_t key A unique key that is randomized by the client.
+int32_t num_want The maximum number of peers you want in the reply. Use -1 for default.
+uint16_t port The port you're listening on.
+uint16_t extensions See extensions
+
+Server replies with packet:size name description
+int32_t action The action this is a reply to. Should in this case be 1 for announce. If 3 (for error) see errors. See actions.
+int32_t transaction_id Must match the transaction_id sent in the announce request.
+int32_t interval the number of seconds you should wait until reannouncing yourself.
+int32_t leechers The number of peers in the swarm that has not finished downloading.
+int32_t seeders The number of peers in the swarm that has finished downloading and are seeding.
+
+The rest of the server reply is a variable number of the following structure:
+
+size name description
+int32_t ip The ip of a peer in the swarm.
+uint16_t port The peer's listen port.
+
+scraping
+Client sends packet:size name description
+int64_t connection_id The connection id retreived from the establishing of the connection.
+int32_t action The action, in this case, 2 for scrape. See actions.
+int32_t transaction_id Randomized by client.
+int16_t num_info_hashes The number of info-hashes that will follow.
+uint16_t extensions See extensions.
+
+The following structure is repeated num_info_hashes times:
+
+size name description
+int8_t[20] info_hash The info hash that is to be scraped.
+
+Server replies with packet:size name description
+int32_t action The action, should in this case be 2 for scrape. If 3 (for error) see errors.
+int32_t transaction_id Must match the sent transaction id.
+
+The rest of the packet contains the following structures once for each info-hash you asked in the scrape request.
+
+size name description
+
+int32_t complete The total number of completed downloads.
+int32_t downloaded The current number of connected seeds.
+int32_t incomplete The current number of connected leechers.
+
+errors
+In case of a tracker error,
+
+server replies packet:size name description
+int32_t action The action, in this case 3, for error. See actions.
+int32_t transaction_id Must match the transaction_id sent from the client.
+int8_t[] error_string The rest of the packet is a string describing the error.
+
+actions
+The action fields has the following encoding:
+
+connect = 0
+announce = 1
+scrape = 2
+error = 3 (only in server replies)
+extensions
+The extensions field is a bitmask. The following bits are assigned:
+
+1 = authentication.
+authenticationThe packet will have an authentication part appended to it. It has the following format:
+
+size name description
+int8_t username_length The number of characters in the username.
+int8_t[] username The username, the number of characters as specified in the previous field.
+uint8_t[8] passwd_hash sha1(packet + sha1(password)) The packet in this case means the entire packet except these 8 bytes that are the password hash. These are the 8 first bytes (most significant) from the 20 bytes hash calculated.
+
+credits
+Protocol designed by Olaf van der Spek
+
+BitTorrent 协议规范（BT协议集合）四
+通常BT客户端每几分钟就要向tracker发送一次请求.对于一些比较大的BT站点,其tracker的压力是可想而知的.降低tracker的压力首先考虑到的当然是采用更低网络开销的udp协议.于是Bittorrent udp-tracker protocol应运而生.
+  这个协议很简单.
+  下面是实现它的封装类:
+
+
+// UDPTrackerClient.h: interface for the CUDPTrackerClient class.
+//
+//////////////////////////////////////////////////////////////////////
+
+#if !defined(AFX_UDPTRACKERCLIENT_H__69B6ACC8_8193_4680_81D8_925B1550E92C__INCLUDED_)
+#define AFX_UDPTRACKERCLIENT_H__69B6ACC8_8193_4680_81D8_925B1550E92C__INCLUDED_
+
+#if _MSC_VER > 1000
+#pragma once
+#endif // _MSC_VER > 1000
+
+#include ＜WINSOCK2.H＞
+#pragma comment(lib, "ws2_32.lib")
+
+#ifndef _DISABLEWARNING4786_4355
+#define _DISABLEWARNING4786_4355
+#pragma warning( disable : 4786 )
+#pragma warning( disable : 4355 )
+#endif
+#ifndef _ENABLEUSESTL
+#define _ENABLEUSESTL
+#include ＜LIST＞
+#include ＜SET＞
+#include ＜VECTOR＞
+#include ＜QUEUE＞
+#include ＜STRING＞
+#include ＜MAP＞
+using namespace std;
+#endif
+
+class CPeerHostInfo
+{
+public:    
+DWORD IP;//节点IP
+WORD Port;//节点端口
+};
+class CUDPTrackerClient
+{
+public:
+CUDPTrackerClient();
+virtual ~CUDPTrackerClient();
+void CancelSocketOperate();
+BOOL Connect(const char * szServer,WORD wPort = 0);
+DWORD Announcing(BYTE* pInfoHash,BYTE * pPeerID,
+__int64 idownloaded,__int64 ileft,__int64 iuploaded,
+int ievent,
+DWORD dwIP,WORD wPort);
+
+BOOL Disconnect();
+public:
+SOCKET   m_socket;
+DWORD   m_dwIP;
+WORD   m_wPort;
+__int64   m_iConnection_id;
+DWORD   m_dwConnectTick;
+string   m_strError; //如果请求失败,此变量保存错误信息
+DWORD m_dwDonePeers; //种子数
+DWORD m_dwNumPeers; //当前下载者个数
+DWORD m_dwInterval; //查询间隔时间
+list m_listPeers;
+};
+
+#endif // !defined(AFX_UDPTRACKERCLIENT_H__69B6ACC8_8193_4680_81D8_925B1550E92C__INCLUDED_)
+// UDPTrackerClient.cpp: implementation of the CUDPTrackerClient class.
+//
+//////////////////////////////////////////////////////////////////////
+
+#include "stdafx.h"
+#include "UDPTrackerClient.h"
+
+#include "DataStream.h"
+#ifdef _DEBUG
+#undef THIS_FILE
+static char THIS_FILE[]=__FILE__;
+#define new DEBUG_NEW
+#endif
+
+//////////////////////////////////////////////////////////////////////
+// Construction/Destruction
+//////////////////////////////////////////////////////////////////////
+#define RECVBUFSIZE 2048
+
+CUDPTrackerClient::CUDPTrackerClient()
+{
+m_socket = INVALID_SOCKET;
+m_iConnection_id = 0;
+m_dwConnectTick = 0;
+m_dwIP = 0;
+m_wPort = 0;
+m_dwDonePeers = 0; //种子数
+m_dwNumPeers = 0; //当前下载者个数
+m_dwInterval = 0; //查询间隔时间
+}
+
+CUDPTrackerClient::~CUDPTrackerClient()
+{
+Disconnect();
+
+}
+void CUDPTrackerClient::CancelSocketOperate()
+{
+if(m_socket != INVALID_SOCKET)
+{
+LINGER lingerStruct;   
+// If we're supposed to abort the connection, set the linger value
+// on the socket to 0.   
+lingerStruct.l_onoff = 1;
+lingerStruct.l_linger = 0;
+setsockopt(m_socket, SOL_SOCKET, SO_LINGER,
+  (char *)&lingerStruct, sizeof(lingerStruct) );
+}
+}
+BOOL CUDPTrackerClient::Disconnect()
+{
+m_iConnection_id = 0;
+m_dwDonePeers = 0; //种子数
+m_dwNumPeers = 0; //当前下载者个数
+m_dwInterval = 0; //查询间隔时间
+if ( m_socket != INVALID_SOCKET )
+{
+m_dwIP = 0;
+m_wPort = 0;
+// Now close the socket handle. This will do an abortive or
+// graceful close, as requested.    
+shutdown(m_socket,SD_BOTH);
+closesocket(m_socket);
+m_socket = INVALID_SOCKET;
+return TRUE;
+}
+return FALSE;
+}
+
+//szServer连接的主机,可以是下列形式的字符串:
+//easeso.com:1000
+//easeso.com
+//如果wPort不为0,则szServer不应该包含端口信息
+BOOL CUDPTrackerClient::Connect(const char * szServer,WORD wPort)
+{
+m_strError = "";
+BOOL bRes = FALSE;
+if ( m_socket == INVALID_SOCKET )
+{
+//用UDP初始化套接字
+BOOL optval = TRUE;   
+m_socket =socket(AF_INET,SOCK_DGRAM,0);
+if(m_socket == INVALID_SOCKET)
+  return FALSE;
+//设置超时时间
+int TimeOut=10000;
+int err = setsockopt (m_socket, SOL_SOCKET,SO_RCVTIMEO,(CHAR *) &TimeOut,sizeof (TimeOut));
+}
+if(m_dwIP == 0)
+{
+CString strServer = szServer;
+CString strHost;
+if(wPort == 0)
+{
+  int iNext = strServer.Find(':');
+  if(iNext>0)
+  {   
+  strHost = strServer.Mid(0,iNext);   
+  CString strPort = strServer.Mid(iNext+1);   
+  m_wPort = (WORD)atoi(strPort);
+  }
+  else
+  strHost = strServer;
+}
+else
+{
+  strHost = strServer;
+  m_wPort = wPort;
+}
+if(m_wPort == 0)
+  m_wPort = 80;
+
+//Check if address is an IP or a Domain Name
+int a = strHost[0];
+if (a > 47 && a < 58)
+  m_dwIP = inet_addr(strHost);
+else
+{
+  struct hostent *pHost;
+  pHost = gethostbyname(strHost);
+  if(pHost != NULL)
+  m_dwIP = *((ULONG*)pHost->h_addr);
+  else
+  m_dwIP = 0;
+}
+}
+if((GetTickCount()-m_dwConnectTick)>30000)
+{
+m_dwConnectTick = 0;
+m_iConnection_id = 0;
+}
+if(m_socket != INVALID_SOCKET && m_dwIP && m_wPort && m_iConnection_id ==0)
+{
+DWORD dwTransaction_id = GetTickCount();
+SOCKADDR_IN from;
+int fromlength=sizeof(SOCKADDR);
+
+char buf[RECVBUFSIZE];
+from.sin_family=AF_INET;
+from.sin_addr.s_addr=m_dwIP;
+from.sin_port=htons(m_wPort);
+CDataStream sendstream(buf,2047);
+sendstream.clear();
+__int64 iCID = 0x41727101980;
+sendstream.writeint64(CNetworkByteOrder::convert(iCID));
+sendstream.writedword(CNetworkByteOrder::convert((int)0));
+sendstream.writedword(dwTransaction_id);
+
+int iRes = 0;
+int iTimes = 6;
+while(iTimes>0&&m_dwIP)
+{
+  sendto(m_socket,sendstream.getbuffer(),sendstream.size(),0,(struct sockaddr FAR *)&from,sizeof(from));
+  iRes = recvfrom(m_socket,buf,RECVBUFSIZE-1,0,(struct sockaddr FAR *)&from,(int FAR *)&fromlength);
+  if(iRes >=0)
+  break;
+  iTimes--;
+}
+if(iRes>=16)
+{
+  CDataStream recvstream(buf,RECVBUFSIZE-1);
+  DWORD dwAction = (DWORD)CNetworkByteOrder::convert((int)recvstream.readdword());
+  DWORD dwTIDResp= recvstream.readdword();
+  if(dwTIDResp == dwTransaction_id)
+  {
+  if(dwAction == 0)
+  {
+  m_iConnection_id = recvstream.readint64();   
+  //BitComet将回复0x16字节数据,最后6字节是服务器查看到的本地IP和UDP端口
+  }
+  else if(dwAction == 3)//得到一个错误信息包
+  {
+  buf[iRes]=0;
+  m_strError = recvstream.readstring();
+  }
+  }
+}
+}
+if(m_iConnection_id)
+bRes = TRUE;
+return bRes;
+}
+//提交请求
+//pInfoHash 20字节的数据缓冲区指针
+//pPeerID 20字节的数据缓冲区指针
+//ievent参数值:
+//none = 0
+//completed = 1
+//started = 2
+//stopped = 3
+
+DWORD CUDPTrackerClient::Announcing(BYTE* pInfoHash,BYTE * pPeerID,
+      __int64 idownloaded,__int64 ileft,__int64 iuploaded,
+      int ievent,
+      DWORD dwIP,WORD wPort)
+{
+m_listPeers.clear();
+m_dwNumPeers = 0;
+m_dwDonePeers = 0;
+m_strError = "";
+DWORD dwReturnCode = 0;
+if(m_iConnection_id && m_socket != INVALID_SOCKET && m_dwIP & m_wPort)
+{
+DWORD dwTransaction_id = GetTickCount();
+//srand(dwTransaction_id);
+//DWORD dwKey = rand();
+DWORD dwKey = 0x3753;
+SOCKADDR_IN from;
+int fromlength=sizeof(SOCKADDR);
+char buf[RECVBUFSIZE];
+from.sin_family=AF_INET;
+from.sin_addr.s_addr=m_dwIP;
+from.sin_port=htons(m_wPort);
+CDataStream sendstream(buf,RECVBUFSIZE-1);
+sendstream.clear();
+sendstream.writeint64(m_iConnection_id);
+sendstream.writedword(CNetworkByteOrder::convert((int)1));
+sendstream.writedword(dwTransaction_id);
+sendstream.writedata(pInfoHash,20);
+sendstream.writedata(pPeerID,20);
+sendstream.writeint64(CNetworkByteOrder::convert(idownloaded));
+sendstream.writeint64(CNetworkByteOrder::convert(ileft));
+sendstream.writeint64(CNetworkByteOrder::convert(iuploaded));
+sendstream.writedword(CNetworkByteOrder::convert(ievent));
+sendstream.writedword(dwIP);
+sendstream.writedword(CNetworkByteOrder::convert((int)dwKey));
+sendstream.writedword(CNetworkByteOrder::convert((int)200));
+sendstream.writedword(CNetworkByteOrder::convert(wPort));
+
+int iRes = 0;
+int iTimes = 2;
+while(iTimes>0&&m_dwIP)
+{
+  sendto(m_socket,sendstream.getbuffer(),sendstream.size(),0,(struct sockaddr FAR *)&from,sizeof(from));
+  iRes = recvfrom(m_socket,buf,RECVBUFSIZE-1,0,(struct sockaddr FAR *)&from,(int FAR *)&fromlength);
+  if(iRes >=0)
+  break;
+  iTimes--;
+}
+if(iRes>=20)
+{   
+  CDataStream recvstream(buf,RECVBUFSIZE-1);
+  DWORD dwAction = (DWORD)CNetworkByteOrder::convert((int)recvstream.readdword());
+  DWORD dwTIDResp= recvstream.readdword();
+  if(dwTIDResp == dwTransaction_id)
+  {
+  if(dwAction == 1)
+  {
+  m_dwInterval = (DWORD)CNetworkByteOrder::convert((int)recvstream.readdword());
+  m_dwNumPeers = (DWORD)CNetworkByteOrder::convert((int)recvstream.readdword());
+  m_dwDonePeers = (DWORD)CNetworkByteOrder::convert((int)recvstream.readdword());   
+  CPeerHostInfo hi;   
+  for(int iCurPos = 20;iCurPos+6<=iRes;iCurPos+=6)
+  {
+    hi.IP= recvstream.readdword();
+    hi.Port = (WORD)CNetworkByteOrder::convert((unsigned short)recvstream.readword());
+    m_listPeers.push_back(hi);
+  }
+  if(m_dwNumPeers>m_listPeers.size())
+  {
+    iRes = 0;
+    iTimes = 6;
+    while(iTimes>0&&m_dwIP)
+    {
+    iRes = recvfrom(m_socket,buf,RECVBUFSIZE-1,0,(struct sockaddr FAR *)&from,(int FAR *)&fromlength);
+    if(iRes >=0)
+    break;
+    iTimes--;
+    }
+    if(iRes>=6)
+    {
+    for(iCurPos = 0;iCurPos+6<=iRes;iCurPos+=6)
+    {
+    hi.IP= recvstream.readdword();
+    hi.Port = (DWORD)CNetworkByteOrder::convert((int)recvstream.readword());
+    m_listPeers.push_back(hi);
+    }
+    }    
+  }
+  m_dwNumPeers = m_listPeers.size();
+  dwReturnCode = 200;
+  }
+  else if(dwAction == 3)//得到一个错误信息包
+  {
+  buf[iRes]=0;
+  m_strError = recvstream.readstring();
+  dwReturnCode = 400;
+  }
+  }
+}
+}
+//每次都要求重新连接
+m_iConnection_id = 0;
+return dwReturnCode;
+}
+// DataStream.h: interface for the CDataStream class.
+//
+//////////////////////////////////////////////////////////////////////
+
+#if !defined(AFX_DATASTREAM_H__D90A2534_EA73_4BEA_8B7E_87E59A3D1D26__INCLUDED_)
+#define AFX_DATASTREAM_H__D90A2534_EA73_4BEA_8B7E_87E59A3D1D26__INCLUDED_
+
+#if _MSC_VER > 1000
+#pragma once
+#endif // _MSC_VER > 1000
+#include
+//数据流操作函数
+class CDataStream
+{
+public :
+CDataStream(char * szBuf,int isize)
+{
+m_isize = isize;
+buffer = szBuf;
+current = buffer;
+}
+~CDataStream()
+{
+}
+  void clear()
+{
+current = buffer;
+current[0]=0;
+}
+//此函数不动态增加内存,一次打印的数据长度不应该超过缓冲区的三分之一,否则可能导致失败
+bool printf(const char * format,...)
+{
+if(current)
+{
+  if(current - buffer > (m_isize*2)/3)
+  return false;
+  va_list argPtr ;
+  va_start( argPtr, format ) ;
+  int count = vsprintf( current, format, argPtr ) ;
+  va_end( argPtr );
+  current += count ;
+  return true;
+}
+return false;
+}
+//此函数拷贝字符串
+bool strcpy(const char * szStr)
+{
+if(current&&szStr)
+{
+  int ilen = lstrlen(szStr);
+  if((m_isize-(current - buffer)) < (ilen +2))
+  return false;
+  memcpy(current,szStr,ilen+1);
+  current += ilen;
+  return true;
+}
+return false;
+}
+char * getcurrentpos()
+{
+return current;
+}
+void move(int ilen)//当前指针向后移动ilen
+{
+current += ilen;
+}
+void reset()
+{
+current = buffer;
+}
+BYTE readbyte()
+{
+current ++;
+return *(current-1);
+}
+void writebyte(BYTE btValue)
+{
+*current = btValue;
+current ++;
+}
+WORD readword()
+{
+current +=2;
+return *((WORD*)(current-2));
+}
+void writeword(WORD wValue)
+{
+*((WORD*)current) = wValue;
+current +=2;
+}
+DWORD readdword()
+{
+current +=4;
+return *((DWORD*)(current-4));
+}
+void writedword(DWORD dwValue)
+{
+*((DWORD*)current) = dwValue;
+current +=4;
+}
+__int64 readint64()
+{
+current +=8;
+return *((__int64*)(current-8));
+}
+void writeint64(__int64 iValue)
+{
+*((__int64*)current) = iValue;
+current +=8;
+}
+BYTE * readdata(DWORD dwLen)
+{
+current +=dwLen;
+return (BYTE*)(current-dwLen);
+}
+void writedata(BYTE * pData,DWORD dwLen)
+{
+memcpy(current,pData,dwLen);
+current +=dwLen;
+}
+char * readstring()
+{
+char * szRes = current;
+int ilen = lstrlen(current);
+current +=(ilen+1);
+return szRes;
+}
+int size()
+{
+return (int)(current-buffer);
+}
+const char * getbuffer(){return buffer;}
+private :
+char* buffer;
+  char* current;
+int m_isize;
+};
+class CNetworkByteOrder
+{
+public:
+static unsigned short int convert(unsigned short int iValue)
+{
+unsigned short int iData;
+((BYTE*)&iData)[0] = ((BYTE*)&iValue)[1];
+((BYTE*)&iData)[1] = ((BYTE*)&iValue)[0];
+return iData;
+}
+static int convert(int iValue)
+{
+int iData;
+((BYTE*)&iData)[0] = ((BYTE*)&iValue)[3];
+((BYTE*)&iData)[1] = ((BYTE*)&iValue)[2];
+((BYTE*)&iData)[2] = ((BYTE*)&iValue)[1];
+((BYTE*)&iData)[3] = ((BYTE*)&iValue)[0];
+return iData;
+}
+static __int64 convert(__int64 iValue)
+{
+__int64 iData;
+((BYTE*)&iData)[0] = ((BYTE*)&iValue)[7];
+((BYTE*)&iData)[1] = ((BYTE*)&iValue)[6];
+((BYTE*)&iData)[2] = ((BYTE*)&iValue)[5];
+((BYTE*)&iData)[3] = ((BYTE*)&iValue)[4];
+((BYTE*)&iData)[4] = ((BYTE*)&iValue)[3];
+((BYTE*)&iData)[5] = ((BYTE*)&iValue)[2];
+((BYTE*)&iData)[6] = ((BYTE*)&iValue)[1];
+((BYTE*)&iData)[7] = ((BYTE*)&iValue)[0];
+return iData;
+}
+
+};
+#endif // !defined(AFX_DATASTREAM_H__D90A2534_EA73_4BEA_8B7E_87E59A3D1D26__INCLUDED_)
+
+BitTorrent 协议规范（BT协议集合）五
+BitTorrent is a protocol for distributing files. It identifies content by URL and is designed to integrate seamlessly with the web. Its advantage over plain HTTP is that when multiple downloads of the same file happen concurrently, the downloaders upload to each other, making it possible for the file source to support very large numbers of downloaders with only a modest increase in its load.
+
+A BitTorrent file distribution consists of these entities:
+
+An ordinary web server
+A static 'metainfo' file
+A BitTorrent tracker
+An 'original' downloader
+The end user web browsers
+The end user downloaders
+There are ideally many end users for a single file.
+
+To start serving, a host goes through the following steps:
+
+Start running a tracker (or, more likely, have one running already).
+Start running an ordinary web server, such as apache, or have one already.
+Associate the extension .torrent with mimetype application/x-bittorrent on their web server (or have done so already).
+Generate a metainfo (.torrent) file using the complete file to be served and the URL of the tracker.
+Put the metainfo file on the web server.
+Link to the metainfo (.torrent) file from some other web page.
+Start a downloader which already has the complete file (the 'origin').
+To start downloading, a user does the following:
+
+Install BitTorrent (or have done so already).
+Surf the web.
+Click on a link to a .torrent file.
+Select where to save the file locally, or select a partial download to resume.
+Wait for download to complete.
+Tell downloader to exit (it keeps uploading until this happens).
+The connectivity is as follows:
+
+The web site is serving up static files as normal, but kicking off the BitTorrent helper app on the clients.
+The tracker is receiving information from all downloaders and giving them random lists of peers. This is done over HTTP or HTTPS.
+Downloaders are periodically checking in with the tracker to keep it informed of their progress, and are uploading to and downloading from each other via direct connections. These connections use the BitTorrent peer protocol, which operates over TCP.
+The origin is uploading but not downloading at all, since it has the entire file. The origin is necessary to get the entire file into the network. Often for popular downloads the origin can be taken down after a while since several downloads may have completed and been left running indefinitely.
+Metainfo file and tracker responses are both sent in a simple, efficient, and extensible format called bencoding (pronounced 'bee encoding'). Bencoded messages are nested dictionaries and lists (as in Python), which can contain strings and integers. Extensibility is supported by ignoring unexpected dictionary keys, so additional optional ones can be added later.
+
+Bencoding is done as follows:
+
+Strings are length-prefixed base ten followed by a colon and the string. For example 4:spam corresponds to 'spam'.
+Integers are represented by an 'i' followed by the number in base 10 followed by an 'e'. For example i3e corresponds to 3 and i-3e corresponds to -3. Integers have no size limitation. i-0e is invalid. All encodings with a leading zero, such as i03e, are invalid, other than i0e, which of course corresponds to 0.
+Lists are encoded as an 'l' followed by their elements (also bencoded) followed by an 'e'. For example l4:spam4:eggse corresponds to ['spam', 'eggs'].
+Dictionaries are encoded as a 'd' followed by a list of alternating keys and their corresponding values followed by an 'e'. For example, d3:cow3:moo4:spam4:eggse corresponds to {'cow': 'moo', 'spam': 'eggs'} and d4:spaml1:a1:bee corresponds to {'spam': ['a', 'b']} . Keys must be strings and appear in sorted order (sorted as raw strings, not alphanumerics).
+Metainfo files are bencoded dictionaries with the following keys:
+
+announce
+The URL of the tracker.
+
+info
+This maps to a dictionary, with keys described below.
+
+The name key maps to a string which is the suggested name to save the file (or directory) as. It is purely advisory.
+
+piece length maps to the number of bytes in each piece the file is split into. For the purposes of transfer, files are split into fixed-size pieces which are all the same length except for possibly the last one which may be truncated. Piece length is almost always a power of two, most commonly 218 = 256 K (BitTorrent prior to version 3.2 uses 220 = 1 M as default).
+pieces maps to a string whose length is a multiple of 20. It is to be subdivided into strings of length 20, each of which is the SHA1 hash of the piece at the corresponding index.
+
+There is also a key length or a key files, but not both or neither. If length is present then the download represents a single file, otherwise it represents a set of files which go in a directory structure.
+
+In the single file case, length maps to the length of the file in bytes.
+
+For the purposes of the other keys, the multi-file case is treated as only having a single file by concatenating the files in the order they appear in the files list. The files list is the value files maps to, and is a list of dictionaries containing the following keys:
+
+length
+The length of the file, in bytes.
+path
+A list of strings corresponding to subdirectory names, the last of which is the actual file name (a zero length list is an error case).
+In the single file case, the name key is the name of a file, in the muliple file case, it's the name of a directory.
+
+Tracker queries are two way. The tracker receives information via HTTP GET parameters and returns a bencoded message. Note that although the current tracker implementation has its own web server, the tracker could run very nicely as, for example, an apache module.
+
+Tracker GET requests have the following keys:
+
+info_hash
+The 20 byte sha1 hash of the bencoded form of the info value from the metainfo file. Note that this is a substring of the metainfo file. This value will almost certainly have to be escaped.
+
+peer_id
+A string of length 20 which this downloader uses as its id. Each downloader generates its own id at random at the start of a new download. This value will also almost certainly have to be escaped.
+
+ip
+An optional parameter giving the IP (or dns name) which this peer is at. Generally used for the origin if it's on the same machine as the tracker.
+
+port
+The port number this peer is listening on. Common behavior is for a downloader to try to listen on port 6881 and if that port is taken try 6882, then 6883, etc. and give up after 6889.
+
+uploaded
+The total amount uploaded so far, encoded in base ten ascii.
+
+downloaded
+The total amount downloaded so far, encoded in base ten ascii.
+
+left
+The number of bytes this peer still has to download, encoded in base ten ascii. Note that this can't be computed from downloaded and the file length since it might be a resume, and there's a chance that some of the downloaded data failed an integrity check and had to be re-downloaded.
+
+event
+This is an optional key which maps to started, completed, or stopped (or empty, which is the same as not being present). If not present, this is one of the announcements done at regular intervals. An announcement using started is sent when a download first begins, and one using completed is sent when the download is complete. No completed is sent if the file was complete when started. Downloaders send an announcement using 'stopped' when they cease downloading.
+
+Tracker responses are bencoded dictionaries. If a tracker response has a key failure reason, then that maps to a human readable string which explains why the query failed, and no other keys are required. Otherwise, it must have two keys: interval, which maps to the number of seconds the downloader should wait between regular rerequests, and peers. peers maps to a list of dictionaries corresponding to peers, each of which contains the keys peer id, ip, and port, which map to the peer's self-selected ID, IP address or dns name as a string, and port number, respectively. Note that downloaders may rerequest on nonscheduled times if an event happens or they need more peers.
+
+If you want to make any extensions to metainfo files or tracker queries, please coordinate with Bram Cohen to make sure that all extensions are done compatibly.
+
+BitTorrent's peer protocol operates over TCP. It performs efficiently without setting any socket options.
+
+Peer connections are symmetrical. Messages sent in both directions look the same, and data can flow in either direction.
+
+The peer protocol refers to pieces of the file by index as described in the metainfo file, starting at zero. When a peer finishes downloading a piece and checks that the hash matches, it announces that it has that piece to all of its peers.
+
+
+Connections contain two bits of state on either end: choked or not, and interested or not. Choking is a notification that no data will be sent until unchoking happens. The reasoning and common techniques behind choking are explained later in this document.
+
+Data transfer takes place whenever one side is interested and the other side is not choking. Interest state must be kept up to date at all times - whenever a downloader doesn't have something they currently would ask a peer for in unchoked, they must express lack of interest, despite being choked. Implementing this properly is tricky, but makes it possible for downloaders to know which peers will start downloading immediately if unchoked.
+
+Connections start out choked and not interested.
+
+When data is being transferred, downloaders should keep several piece requests queued up at once in order to get good TCP performance (this is called 'pipelining'.) On the other side, requests which can't be written out to the TCP buffer immediately should be queued up in memory rather than kept in an application-level network buffer, so they can all be thrown out when a choke happens.
+
+The peer wire protocol consists of a handshake followed by a never-ending stream of length-prefixed messages. The handshake starts with character ninteen (decimal) followed by the string 'BitTorrent protocol'. The leading character is a length prefix, put there in the hope that other new protocols may do the same and thus be trivially distinguishable from each other.
+
+All later integers sent in the protocol are encoded as four bytes big-endian.
+
+After the fixed headers come eight reserved bytes, which are all zero in all current implementations. If you wish to extend the protocol using these bytes, please coordinate with Bram Cohen to make sure all extensions are done compatibly.
+
+Next comes the 20 byte sha1 hash of the bencoded form of the info value from the metainfo file. (This is the same value which is announced as info_hash to the tracker, only here it's raw instead of quoted here). If both sides don't send the same value, they sever the connection. The one possible exception is if a downloader wants to do multiple downloads over a single port, they may wait for incoming connections to give a download hash first, and respond with the same one if it's in their list.
+
+
+After the download hash comes the 20-byte peer id which is reported in tracker requests and contained in peer lists in tracker responses. If the receiving side's peer id doesn't match the one the initiating side expects, it severs the connection.
+
+That's it for handshaking, next comes an alternating stream of length prefixes and messages. Messages of length zero are keepalives, and ignored. Keepalives are generally sent once every two minutes, but note that timeouts can be done much more quickly when data is expected.
+
+All non-keepalive messages start with a single byte which gives their type. The possible values are:
+
+0 - choke
+1 - unchoke
+2 - interested
+3 - not interested
+4 - have
+5 - bitfield
+6 - request
+7 - piece
+8 - cancel
+'choke', 'unchoke', 'interested', and 'not interested' have no payload.
+
+'bitfield' is only ever sent as the first message. Its payload is a bitfield with each index that downloader has sent set to one and the rest set to zero. Downloaders which don't have anything yet may skip the 'bitfield' message. The first byte of the bitfield corresponds to indices 0 - 7 from high bit to low bit, respectively. The next one 8-15, etc. Spare bits at the end are set to zero.
+
+The 'have' message's payload is a single number, the index which that downloader just completed and checked the hash of.
+
+'request' messages contain an index, begin, and length. The last two are byte offsets. Length is generally a power of two unless it gets truncated by the end of the file. All current implementations use 215, and close connections which request an amount greater than 217.
+
+'cancel' messages have the same payload as request messages. They are generally only sent towards the end of a download, during what's called 'endgame mode'. When a download is almost complete, there's a tendency for the last few pieces to all be downloaded off a single hosed modem line, taking a very long time. To make sure the last few pieces come in quickly, once requests for all pieces a given downloader doesn't have yet are currently pending, it sends requests for everything to everyone it's downloading from. To keep this from becoming horribly inefficient, it sends cancels to everyone else every time a piece arrives.
+
+
+'piece' messages contain an index, begin, and piece. Note that they are correlated with request messages implicitly. It's possible for an unexpected piece to arrive if choke and unchoke messages are sent in quick succession and/or transfer is going very slowly.
+
+Downloaders generally download pieces in random order, which does a reasonably good job of keeping them from having a strict subset or superset of the pieces of any of their peers.
+
+Choking is done for several reasons. TCP congestion control behaves very poorly when sending over many connections at once. Also, choking lets each peer use a tit-for-tat-ish algorithm to ensure that they get a consistent download rate.
+
+The choking algorithm described below is the currently deployed one. It is very important that all new algorithms work well both in a network consisting entirely of themselves and in a network consisting mostly of this one.
+
+There are several criteria a good choking algorithm should meet. It should cap the number of simultaneous uploads for good TCP performance. It should avoid choking and unchoking quickly, known as 'fibrillation'. It should reciprocate to peers who let it download. Finally, it should try out unused connections once in a while to find out if they might be better than the currently used ones, known as optimistic unchoking.
+
+The currently deployed choking algorithm avoids fibrillation by only changing who's choked once every ten seconds. It does reciprocation and number of uploads capping by unchoking the four peers which it has the best download rates from and are interested. Peers which have a better upload rate but aren't interested get unchoked and if they become interested the worst uploader gets choked. If a downloader has a complete file, it uses its upload rate rather than its download rate to decide who to unchoke.
+
+For optimistic unchoking, at any one time there is a single peer which is unchoked regardless of it's upload rate (if interested, it counts as one of the four allowed downloaders.) Which peer is optimistically unchoked rotates every 30 seconds. To give them a decent chance of getting a complete piece to upload, new connections are three times as likely to start as the current optimistic unchoke as anywhere else in the rotation.
+
+BitTorrent 协议规范（BT协议集合）六
+BT是如何采用激励机制来达到健壮性的
+
+Bram Cohen
+bram@bitconjurer.org
+2003年5月22日
+翻译：小马哥
+日期：2004-6-1
+修改：扬帆
+日期：2005-5-9
+
+概要
+BitTorrent 文件发布系统采用针锋相对（tit_for_tat）的方法来达到帕累托有效，与当前已知的协作技术相比，它具有更高的活力。本文将解释BitTorrent 的用途，以及是怎样用经济学的方法来达到这个目标的。
+
+1、BitTorrent 用来做什么？
+当通过HTTP协议来下载一个文件的时候，所有的上载开销都在主机上。而使用 BitTorrent，当多个人同时下载同一个文件的时候，他们之间也相互为对方提供文件的部分片断的下载。这样，就把上载的开销分摊到每个下载者那里，也就可以在理论上支持无限多个下载者来下载同一个文件。
+研究人员以前也在寻找一种达到这种效果的可实用的技术[3]。这种技术原来并没有在大的范围内运用过，因为逻辑和的问题非常棘手。如果仅仅计算哪些 peers 拥有文件的哪些片断以及这些片断应该被发送给谁，那么很难只产生比较小的系统开销。Peers之间的连接很少会超过几个小时，通常是几分钟而已。最后，有一个普遍的问题，就是公平性。
+我们将解释BitTorrent 是如何很好的解决这些问题的。
+
+1.1、BitTorrent接口
+BitTorrent 的接口可能是最简单的。用户点击希望下载的文件的超级链接，然后会弹出一个标准的“保存到”对话框。此后，出现一个下载进度的窗口，在这个窗口中，除了显示下载速率外，还显示一个上载速率。BT在使用上非常简单，使得BT能广泛的被运用。
+
+1.2、部署
+决定采用BitTorrent的原因是因为有一些文件需要发布。而下载者使用 BitTorrent，是因为这是他们获取所需要的文件的唯一途径。下载者经常一完成下载，就停止为别人上载，虽然说，在BT 客户端完成下载之后，继续为别人提供一段时间的上载是一种礼貌的行为。标准的实现是让客户端一直保持上载，除非窗口被关闭。
+在一个典型的部署中，未完成的下载者
+一台主机负责提供原始的文件，下载者通过BT来下载这个文件。下载者在下载的同时，为其它人提供上载，最后，离开这个系统。
+
+2、技术框架
+
+2.1发布内容
+为了部署 BT，首先将一个扩展名为 .torrent 的文件放在一个普通的web服务器上。.torrent文件包含了要共享的文件的信息，包括文件名、大小、文件的散列信息和一个指向tracker的 url。Tracker负责帮助下载者能够获取其它下载者的信息。Tracker和下载者之间使用一种很简单的基于HTTP的协议进行交互，下载者告诉 tracker自己要下载的文件、自己使用的端口以及类似的信息，tracker告诉下载者其它下载同样文件的下载者的联系信息。下载者利用这些信息相互之间建立连接。一个被成为“种子”的下载者，必须首先被启动，它知道完整的文件信息。对tracker和web服务器的带宽需求很低，而种子必须至少发送原始文件的一份完整拷贝。
+
+
+译注：
+P2P的核心思想就是没有服务器的概念，任何一个下载者既是client，又是server。
+下载者从别人那里取文件的时候，称为下载，而为别人提供文件的时候，称为上载（传）。
+为了完成一次部署，至少需要一个 tracker和一个seed。所谓tracker，是一个服务器，负责帮助peers之间相互建立连接。而seed，通常是第一个向tracker注册，然后它就开始进入循环，等待为别人提供文件，也就是说，第一个seed只负责上传文件。一旦有一个peer向tracker注册后，就可以取得 seed的信息，从而与seed建立连接。从seed处读取文件。由于原始的文件，只有seed拥有，所有说，seed至少要上传原始文件的一份完整拷贝。如果又有一个peer加入进来，那么它可以同时和seed和前一个peer建立连接，然后从这两者处获取文件。
+
+2.2对等发布
+所有和文件下载相关的逻辑问题，通过 peers之间的交互来解决。一些关于下载和上传的速率的信息被发送给tracker，tracker搜集这些信息用于统计。Tracker的职责被严格限定为“帮助peers相互发现对方”。
+尽管tracker是peers之间相互发现的唯一途径，也是peers之间相互协作的唯一地点，标准的tracker算法返回一个随机的 peers的列表。随机图具有非常强大的特性，许多的peer选择算法最终产生了一个幂律图，幂律图能以少量的搅拌来获得分片。注意，peers之间的连接都是双向传输的。
+为了跟踪每个peers都拥有什么，BT将文件切割为固定大小的片（典型的大小是256k）。每个下载者必须通知其它peers，它拥有哪些片。为了验证文件的完整性，对每个片断都通过SHA1算法计算出它的hash信息，并保存在torrent文件中。Peers只有在检查了片断的完整性之后，才会通知其它peers它拥有这个片断。删除代码是一种被建议使用的帮助文件分布的技术，但是这种更简单的方法（既分片）也是可用的。
+Peers不断的从它能连接到的peers那里下载文件片断。当然，它不能从没有跟它建立连接的peers那里下载任何东西。即使是建立了连接的peers，有的也并不包含它想要的片断，或者还不允许它去下载。关于不允许其它peers从它那里下载文件片断的策略，被称为阻塞choking，后文将进行讨论。其它关于文件分布的方法通常都要用到麻烦的树结构，而且树叶的上载能力并没有被利用起来。简单的让 peers 宣布它拥有什么会导致不到 10 % 的带宽开支，却可以可靠的使用所有的上载能力。
+
+2.3流水作业
+构架在TCP之上的应用层协议，例如BT，很重要的一点是应该同时发送多个请求，以避免在两个片断发送之间的延迟，因为那样会严重影响传输速率。为了达到这种目的，BT将每个片断又进一步分为子片断，每个子片断的大小一般是16k，同时，它一直保持几个请求（通常是5个）被流水的同时发送。流水作业所选择的data（应该是指的同时发送的请求数目，也就是5个request）的依据是能使得大多数连接变得饱和。
+
+译注：也就是说，每次发送5个请求，然后过一段时间，又发送5个请求。流水作业在HTTP 协议1.1版本中被广泛运用。
+
+2.4片断选择
+选择一个好的顺序来下载片断，对提高性能非常重要。一个差的片断选择算法可能导致所有的片断都处于下载中，或者另一种情况，没有任何片断被上载给其它 peers。
+
+2.4.1严格的优先级
+片断选择的第一个策略是：一旦请求了某个片断的子片断，那么该片断剩下的子片断优先被请求。这样，可以尽可能快的获得一个完整的片断
+
+2.4.2最少的优先
+对一个下载者来说，在选择下一个被下载的片断时，通常选择的是它的peers们所拥有的最少的那个片断，也就是所谓的“最少优先”。这种技术，确保了每个下载者都拥有它的peers们最希望得到的那些片断，从而一旦有需要，上载就可以开始。这也确保了那些越普通的片断越放在最后下载，从而减少了这样一种可能性，即某个peer当前正提供上载，而随后却没有任何的被别人感兴趣的片断了。
+
+译注：
+也就说说，每个peer都优先选择整个系统中最少的那些片断去下载，而那些在系统中相对较多的片断，放在后面下载，这样，整个系统就趋向于一种更优的状态。如果不用这种算法，大家都去下载最多的那些片断，那么这些片断就会在系统中分布的越来越多，而那些在系统中相对较少的片断仍然很少，最后，某些 peer 就不再拥有其它 peer 感兴趣的片断了，那么系统的参与者越来越少，整个系统的性能就下降。
+在BT系统中，充分考虑了经济学的概念，处处从整个系统的性能出发，参与者越多，系统越优化。
+
+信息理论显示除非种子上传了文件的所有片断，否则没有任何下载者可以完成所有文件的下载。如果在一个部署中，只有一个种子，而且种子的上载能力比它的大多数下载者都要差，那么，不同的下载者从种子那里下载不同的片断，性能就会变得比较好，因为，重复的下载浪费了种子获取更多信息的机会。“最少优先”使得下载者只从种子处下载新的片断（也就是整个系统中其它peer都没有的片断），因为，下载者能够看到其它peers那里已经有了种子已经上传的片断。
+
+在某些部署中，原始的种子由于某些原因最终关闭，只好由剩下的这些下载者们来负责上传。这样显然会带来一个风险：某些片断任何一个下载者都不拥有。“最少优先”也很好的处理了这种情况。通过尽快的复制最少的片断，减少了这种由于当前的peers停止上载后带来的风险。
+
+2.4.3随机的第一个片断
+“最少优先”的一个例外是在下载刚开始的时候。此时，下载者没有任何片断可供上传，所以，需要尽快的获取一个完整的片断。而最少的片断，通常只有某一个peer拥有，所以，它可能比多个peers都拥有的那些片断下载的要慢。因此，第一个片断是随机选择的，直到第一个片断下载完成，才切换到“最少优先”的策略。
+
+
+2.4.4最后阶段模式
+有时候，从一个速率很慢的peer那里请求一个片断。在下载的中间阶段，这不是什么问题，但是却可能潜在的延迟下载的完成。为了防止这种情况，在最后阶段，peer向它的所有的peers们都发送某片断的子片断的请求，一旦某些子片断到了，那么就会向其它peer发送cancel 消息，取消对这些子片断的请求，以避免带宽的浪费。实际上，用这种方法并没有浪费多少带宽，而文件的结束部分也一直下载的非常快。
+
+3 阻塞（choking）算法
+BT并不集中分配资源。每个peer自己有责任来尽可能的提高它的下载速率。Peers从它可以连接的peers处下载文件，并根据对方提供的下载速率给予同等的上传回报（你敬我一尺，我敬你一丈）。对于合作者，提供上传服务，对于不合作的，就阻塞对方。所以说，阻塞是一种临时的拒绝上传策略，虽然上传停止了，但是下载仍然继续。在阻塞停止的时候，连接并不需要重新建立。
+阻塞算法并不属于BT对等协议（指peers 之间交互的协议）的技术部分，但是对提高性能是必要的。一个好的阻塞算法应该利用所有可用的资源，为所有下载者提供一致可靠的下载速率，并适当惩罚那些只下载而不上传的peers。
+
+3.1帕累托有效
+帕累托有效是指资源配置已达到这样一种境地，即任何重新改变资源配置的方式，都不可能使一部分人在没有其他人受损的情况下受益。这一资源配置的状态，被称为“帕累托最优”（Pareto optimum）状态，或称为“帕累托有效”（Pareto efficient）
+在计算机领域，寻求帕累托有效是一种本地优化算法
+BitTorrent的阻塞算法，用一种针锋相对的方式来试图达到帕累托最优。（原文不太好翻译，我简化了）。Peers对那些向他提供上传服务的peers给予同样的回报，目的是希望在任何时候都有若干个连接正在进行着双向传输。
+
+3.2 BitTorrent的阻塞算法
+从技术层面上说，BT的每个peer一直与固定数量的其它 peers 保持疏通（通常是4个），所以问题就变成了哪些peers应该保持疏通？这种方法使得TCP的拥塞控制性能能够可靠的饱和上传容量。（也就是说，尽量让整个系统的上传能力达到最大）。
+严格的根据当前的下载速率来决定哪些peers应该保持疏通。令人惊讶的是，计算当前下载速率是个大难题。当前的实现实质上是一个每隔20秒的轮询。而原来的算法是对一个长时间的网络传输进行总计，但这种方法很差劲，因为由于资源可用或者不可用，带宽会变化的很快。
+为了避免因为频繁的阻塞和疏通 peers造成的资源浪费，BT每隔10秒计算一次哪个peer需要被阻塞，然后将这种状态保持到下一个10秒。10秒已经足够使得TCP来调整它的传输性能到最大。
+
+3.3、optimistic unchoking
+如果只是简单的为提供最好的下载速率的peers们提供上载，那么就没有办法来发现那些空闲的连接是否比当前正使用的连接更好。为了解决这个问题，在任何时候，每个peer都拥有一个称为“optimistic unchoking”的连接，这个连接总是保持疏通状态，而不管它的下载速率是怎样。每隔30秒，重新计算一次哪个连接应该是“optimistic unchoking”。30秒足以让上载能力达到最大，下载能力也相应的达到最大。这种和针锋相对类似的思想非常的伟大。“optimistic unchoking”非常和谐的与“囚徒困境”合作。
+
+3.4、反对歧视
+某些情况下，一个peer可能被它所有的peers都阻塞了，这种情况下，它将会保持较低的下载速率直到通过“optimistic unchoking”找到更好peers。为了减轻这种问题，如果一段时间过后，从某个peer那里一个片断也没有得到，那么这个peer认为自己被对方 “怠慢”了，于是不再为对方提供上传，除非对方是“optimistic unchoking”。这种情况频繁发生，会导致多于一个的并发的“optimistic unchoking”。
+
+3.5仅仅上传
+一旦某个peer完成了下载，它不能再通过下载速率（因为下载速率已经为0了）来决定为哪些 peers 提供上载了。目前采用的解决办法是，优先选择那些从它这里得到更好的上载速率的peers。这样的理由是可以尽可能的利用上载带宽。
+
+4、真实世界的体验
+BitTorrent不仅仅早已经实现，而且早已经被广泛的使用，它为许多并发的下载者提供成百兆的文件下载。已知的最大的部署中，同时有超过 1000个的下载者。当前的瓶颈（实际还没有达到）看来是tracker的带宽。它（trakcer的带宽）大概占用了带宽总量的千分之一，一些小的协议扩展可能会使它降到万分之一。
+
+参考资料：
+
+[1] E. Adar and B. A. Huberman. Free riding on gnutella. First Monday, 5(10), 2000.
+[2] A.-L. Barab´asi. Linked: The New Science of Networks.Perseus Publishing, 2002.
+[3] M. Castro, P. Druschel, A.-M. Kermarrec, A. Nandi, A. Rowstron, and A. Singh. Splitstream: High-bandwidth content distribution in cooperative environments. In Proceedings of IPTPS03, Berkeley, USA, Feb. 2003.
+[4] P. Maymounkov and D. Mazieres. Kademlia: A peer-to-peer information system based on the xormetric. In Proceedings of IPTPS02, Cambridge, USA, Mar. 2002.
+
+BitTorrent 协议规范（BT协议集合）七
+BT种子文件使用了一种叫bencoding的编码方法来保存数据。
+bencoding现有四种类型的数据：srings(字符串)，integers(整数)，lists(列表)，dictionaries(字典)
+编码规则如下：
+strings(字符串)编码为：<字符串长度>：<字符串>
+例如： 4:test 表示为字符串"test"
+4:例子 表示为字符串“例子”
+字符串长度单位为字节
+没开始或结束标记
+
+integers(整数)编码为：i<整数>e
+开始标记i，结束标记为e
+例如： i1234e 表示为整数1234
+i-1234e 表示为整数-1234
+整数没有大小限制
+i0e 表示为整数0
+i-0e 为非法
+以0开头的为非法如： i01234e 为非法
+
+lists(列表)编码为：le
+开始标记为l,结束标记为e
+列表里可以包含任何bencoding编码类型，包括整数，字符串，列表，字典。
+例如： l4:test5abcdee 表示为二个字符串["test","abcde"]
+
+dictionaries(字典)编码为de
+开始标记为d,结束标记为e
+关键字必须为bencoding字符串
+值可以为任何bencoding编码类型
+例如： d3:agei20ee 表示为
+d4:path3:C::filename8:test.txte 表示为{"path"="C:\","filename"="test.txt"}
+
+具体文件结构如下：
+全部内容必须都为bencoding编码类型。
+整个文件为一个字典结构,包含如下关键字
+announce:tracker服务器的URL(字符串)
+announce-list(可选):备用tracker服务器列表(列表)
+creation date(可选):种子创建的时间，Unix标准时间格式，从1970 1月1日 00:00:00到创建时间的秒数(整数)
+comment(可选):备注(字符串)
+created by(可选):创建人或创建程序的信息(字符串)
+info:一个字典结构，包含文件的主要信息，为分二种情况：单文件结构或多文件结构
+单文件结构如下：
+      length:文件长度，单位字节(整数)
+      md5sum(可选)：长32个字符的文件的MD5校验和，BT不使用这个值，只是为了兼容一些程序所保留!(字符串)
+      name:文件名(字符串)
+      piece length:每个块的大小，单位字节(整数)
+      pieces:每个块的20个字节的SHA1 Hash的值(二进制格式)
+多文件结构如下：
+      files:一个字典结构
+          length:文件长度，单位字节(整数)
+          md5sum(可选):同单文件结构中相同
+          path:文件的路径和名字，是一个列表结构，如\test\test.txt 列表为l4:test8test.txte
+      name:最上层的目录名字(字符串)
+      piece length:同单文件结构中相同
+      pieces:同单文件结构中相同
+实例：
+用记事本打开一个.torrent可以看来类似如下内容
+d8:announce35:http://www.manfen.net:7802/announce13:creation datei1076675108e4:infod6:lengthi17799e4:name62:MICROSOFT.WINDOWS.2000.AND.NT4.SOURCE.CODE-SCENELEADER.torrent12:piece lengthi32768e6:pieces20:?W ?躐?緕排T酆ee
+
+很容易看出
+announce＝http://www.manfen.net:7802/announce
+creation date＝1076675108秒(02/13/04 20:25:08)
+文件名=MICROSOFT.WINDOWS.2000.AND.NT4.SOURCE.CODE-SCENELEADER.torrent
+文件大小＝17799字节
+文件块大小＝32768字节
+
+BitTorrent 协议规范（BT协议集合）八
+IdentificationBitTorrent is a peer-to-peer file sharing protocol designed by Bram Cohen. Visit his pages at http://www.bitconjurer.org. BitTorrent is designed to facilitate file transfers among multiple peers across unreliable networks.
+
+PurposeThe purpose of this specification is to document version 1.0 of the BitTorrent protocol specification in detail. Bram's protocol specification page http://www.bitconjurer.org/BitTorrent/protocol.html outlines the protocol in somewhat general terms, and lacks behaviorial detail in some areas. The hope is that this document will become a formal specification, written in clear, unambiguous terms, which can be used as a basis for discussion and implementation in the future.
+
+This document is intended to be maintained and used by the BitTorrent development community. Everyone is invited to contribute to this document, with the understanding that the content here is intended to represent the current protocol, which is already deployed in a number of client implementations.
+
+This is not the place to suggest feature requests. For that, please go to the mailing list.
+
+ScopeThis document applies to the first version (i.e. version 1.0) of the BitTorrent protocol specification. Currently, this applies to the torrent file structure, peer wire protocol, and the Tracker HTTP protocol specifications. As newer revisions of each protocol are defined, they should be specified on their own separate pages, not here.
+
+Related Documents http://www.bitconjurer.org/BitTorrent/protocol.html - The official protocol specification.
+BitTorrentWishList - A wish list for developers and end users alike.
+BitTorrentTrackerExtensions - Describes the various extensions of the Tracker protocol that are in use.
+
+ConventionsIn this document, a number of conventions are used in an attempt to present information in a concise and unambiguous fashion.
+
+peer v/s client: In this document, a peer is any BitTorrent client participating in a download. The client is also a peer, however it is the BitTorrent client that is running on the local machine. Reader of this specification may choose to think of themselves as the client which connects to numerous peers.
+
+piece v/s block: In this document, a piece refers to a portion of the downloaded data that is described in the metainfo file, which can be verified by a SHA1 hash. A block is a portion of data that a client may request from a peer. Two or more blocks make up a whole piece, which may then be verified.
+defacto standard: Large blocks of text in italics indicates a practice so common in various client implementations of BitTorrent that it is considered a defacto standard.
+In order help others to find recent changes that have been made to this document, please fill out the change log (last section). This should contain a brief (i.e. one-line) entry for each major change that you've made to the document.
+
+bencodingBencoding is a way to specify and organize data in a terse format. It currently supports the following types: strings, integers, lists, and dictionaries.
+
+stringsStrings are encoded as follows: :
+Note that there is no constant beginning delimiter, and no specific ending delimiter.
+Example: 4:spam represents the string "spam"
+
+integersIntegers are encoded as follows: ie
+The initial i and trailing e are beginning and ending delimiters.
+Example i3e represents the integer "3"
+
+listsLists are encoded as follows: le
+The initial l and trailing e are beginning and ending delimiters.
+
+Lists may contain any bencoded type, including integers, strings, dictionaries, and other lists.
+
+Example: l4:spam4:eggse represents the list of two strings: ["spam", "eggs"]
+
+dictionariesDictionaries are encoded as follows: de
+The initial d and trailing e are the beginning and ending delimiters.
+
+Note that the keys must be bencoded strings. The values may be any bencoded type, including integers, strings, lists, and other dictionaries. Keys must be strings and appear in sorted order (sorted as raw strings, not alphanumerics).
+
+Example: d3:cow3:moo4:spam4:eggse represents the dictionary { "cow" => "moo", "spam" => "eggs" }
+
+Example: d4:spaml1:a1:bee represents the dictionary { "spam" => ["a", "b"] }
+
+Metainfo File StructureAll data in a metainfo file is bencoded. The specification for bencoding is defined above.
+
+The content of a metainfo file (the file ending in ".torrent") is a bencoded dictionary, containing the keys listed below. Keys not marked 'optional' are required fields:
+
+info: a dictionary that describes the file(s) of the torrent. There are two possible forms: one for the case of a 'single-file' torrent with no directory structure, and one for the case of a 'multi-file' torrent, which can contain subdirectory trees.
+
+For the case of the single-file mode, the info dictionary contains the following structure
+length: length of the file in bytes (integer)
+md5sum: (optional) a 32-character hexadecimal string corresponding to the MD5 sum of the file. This is not used by BitTorrent at all, but it is included by some programs for greater compatibility.
+name: the filename of the file (string)
+piece length: number of bytes in each piece (integer)
+pieces: string consisting of the concatenation of all 20-byte SHA1 hash values, one per piece (raw binary encoded)
+For the case of the multi-file mode, the info dictionary contains the following structure
+files: a list of dictionaries, one for each file. Each dictionary in this list contains the following keys:
+
+length: length of the file in bytes (integer)
+md5sum: (optional) a 32-character hexadecimal string corresponding to the MD5 sum of the file. This is not used by BitTorrent at all, but it is included by some programs for greater compatibility.
+path: a list containing one or more string elements that together represent the path and filename. Each element in the list corresponds to either a directory name or (in the case of the final element) the filename. For example, a the file "dir1/dir2/file.ext" would consist of three string elements: "dir1", "dir2", and "file.ext".
+name: the name of the top-most directory in the structure -- the directory which contains all of the files listed in the above files list. (string)
+
+piece length: number of bytes in each piece (integer)
+pieces: string consisting of the concatenation of all 20-byte SHA1 hash values, one per piece (raw binary encoded)
+announce: The announce URL of the tracker (string)
+announce-list: (optional) this is an extention to the official specification, which is also backwards compatible. This key is used to implement lists of backup trackers. The full specification can be found at http://home.elp.rr.com/tur/multitracker-spec.txt
+creation date: (optional) the creation time of the torrent, in standard Unix epoch format (integer seconds since 1-Jan-1970 00:00:00 UTC)
+comment: (optional) free-form textual comments of the author (string)
+created by: (optional) name and version of the program used to create the .torrent (string)
+Notes
+The piece length specifies the nominal piece size, and is usually a power of 2. The piece size is typically chosen based on the total amount of file data in the torrent, constrained by the fact that too small a piece size will result in a large .torrent metadata file, and piece sizes too large cause inefficiency. The general rule of thumb seems to be to pick the smallest piece size that results in a .torrent file no greater than approx. 50 - 75 kB. The most common sizes are 256 kB, 512 kB, and 1 MB. Every piece is of equal length except for the final piece, which is irregular. The number of pieces is thus determined by 'ceil( total length / piece size )'. For the purposes of piece boundaries in the multi-file case, consider the file data as one long continuous stream, composed of the concatenation of each file in the order listed in the files list. The number of pieces and their boundaries are then determined in the same manner as the case of a single file. Pieces may overlap file boundaries.
+Each piece has a corresponding SHA1 hash of the data contained within that piece. These hashes are concatenated to form the pieces value in the above info dictionary. Note that this is not a list but rather a single string. The length of the string must be a multiple of 20 bytes.
+
+Tracker HTTP ProtocolThe tracker is an HTTP service which responds to HTTP GET requests. The requests include metrics from clients that help the tracker keep overall statistics about the torrent. The response includes a peer list that helps the client participate in the torrent. The base URL consists of the "announce URL" as defined in the metadata (.torrent) file. The parameters are then added to this URL, using standard CGI methods (i.e. a '?' after the announce URL, followed by 'param=value' sequences separated by '&')
+
+Note that all binary data in the URL (particularly info_hash and peer_id) must be properly escaped. This means any byte not in the set 0-9, a-z, A-Z, and $-_.+!*'(), must be encoded using the "%nn" format, where nn is the hexadecimal value of the byte. (See RFC1738 for details.)
+
+The parameters used in the client->tracker GET request are as follows:
+
+info_hash: 20-byte SHA1 hash of the value of the info key from the Metainfo file. Note that the value will be a bencoded dictionary, given the definition of the info key above.
+peer_id: 20-byte string used as a unique ID for the client, generated by the client at startup. This is allowed to be any value, and may be binary data. There are currently no guidelines for generating this peer ID. However, one may rightly presume that it must at least be unique for your local machine, thus should probably incorporate things like process ID and perhaps a timestamp recorded at startup. See peer_id below for common client encodings of this field.
+port: The port number that the client is listening on. Ports reserved for BitTorrent are typically 6881-6889. Clients may choose to give up if it cannot establish a port within this range.
+uploaded: The total amount uploaded (since the client sent the 'started' event to the tracker) in base ten ASCII.
+downloaded: The total amount downloaded (since the client sent the 'started' event to the tracker) in base ten ASCII.
+left: The number of bytes this client still has to download, encoded in base ten ascii.
+
+event: If specified, must be one of started, completed, or stopped. If not specified, then this request is one performed at regular intervals.
+
+started: The first request to the tracker must include the event key with the started value.
+stopped: Must be sent to the tracker if the client is shutting down gracefully.
+completed: Must be sent to the tracker when the download completes. However, must not be sent if the download was already 100% complete when the client started. Presumably, this is to allow the tracker to increment the "completed downloads" metric based soley on this event.
+ip: Optional. The true IP address of the client machine, in dotted quad format or rfc3513 defined hexed IPv6 address. Notes: In general this parameter is not necessary as the address of the client can be determined from the IP address from which the HTTP request came. The parameter is only needed in the case where the IP address that the request came in on is not the IP address of the client. This happens if the client is communicating to the tracker through a proxy (or a transparent web proxy/cache.) It also is necessary when both the client and the tracker are on the same local side of a NAT gateway. The reason for this is that otherwise the tracker would give out the internal (RFC1918) address of the client, which is not routeable. Therefore the client must explicitly state its (external, routeable) IP address to be given out to external peers. Various trackers treat this parameter differently. Some only honor it only if the IP address that the request came in on is in RFC1918 space. Others honor it unconditionally, while others ignore it completely. In case of IPv6 address (e.g.: 2001:db8:1:2::100) it indicates only that client can communicate via IPv6.
+numwant: Optional. Number of peers that the client would like to receive from the tracker. This value is permitted to be zero. If omitted, typically defaults to 50 peers.
+The tracker responds with "text/plain" document consisting of a bencoded dictionary with the following keys:
+
+failure reason: If present, then no other keys may be present. The value is a human-readable error message as to why the request failed (string).
+interval: Interval in seconds that the client should wait between sending regular requests to the tracker
+complete: number of peers with the entire file, i.e. seeders (integer)
+incomplete: number of non-seeder peers, aka "leechers" (integer)
+peers: The value is a list of dictionaries, each with the following keys:
+
+peer id: peer's self-selected ID, as described above for the tracker request (string)
+ip: peer's IP address (either IPv6 or IPv4) or DNS name (string)
+port: peer's port number (integer)
+As mentioned above, the list of peers is length 50 by default. If there are fewer peers in the torrent, then the list will be smaller. Otherwise, the tracker randomly selects peers to include in the response. The tracker may choose to implement a more intelligent mechanism for peer selection when responding to a request. For instance, reporting seeds to other seeders could be avoided.
+
+Clients may send a request to the tracker more often than the specified interval, if an event occurs (i.e. stopped or completed) or if the client needs to learn about more peers. However, it is considered bad practice to "hammer" on a tracker to get multiple peers. If a client wants a large peer list in the response, then it should specify the numwant parameter.
+
+Tracker 'scrape' ConventionBy convention most trackers support another form of request, which queries the state of a given torrent (or all torrents) that the tracker is managing. This is referred to as the "scrape page" because it automates the otherwise tedious process of "screen scraping" the tracker's stats page.
+
+The scrape URL is also a HTTP GET method, similar to the one described above. However the base URL is different. To derive the scrape URL use the following steps: Begin with the announce URL. Find the last '/' in it. If the text immediately following that '/' isn't 'announce' it will be taken as a sign that that tracker doesn't support the scrape convention. If it does, substitute 'scrape' for 'announce' to find the scrape page.
+
+Examples: (announce URL -> scrape URL)
+
+http://spam.com/announce       -> http://spam.com/scrape
+http://spam.com/x/announce     -> http://spam.com/x/scrape
+http://spam.com/announce.php     -> http://spam.com/scrape.php
+http://spam.com/a           -> (scrape not supported)
+http://spam.com/announce?x=244 -> http://spam.com/scrape?x=244
+http://spam.com/announce?x=2/4   -> (scrape not supported)
+http://spam.com/x4announce   -> (scrape not supported)
+Note especially that entity unquoting is not to be done. This standard is documented by Bram in the BitTorrent development list archive: http://groups.yahoo.com/group/BitTorrent/message/3275
+
+The scrape URL may be supplimented by the optional parameter info_hash, a 20-byte value as described above. This restricts the tracker's report to that particular torrent. Otherwise stats for all torrents that the tracker is managing are returned. Software authors are strongly encouraged to use the info_hash parameter when at all possible, to reduce the load and bandwidth of the tracker.
+
+The response of this HTTP GET method is a "text/plain" document consisting of a bencoded dictionary, containing the following keys
+files: a dictionary containing one key/value pair for each torrent for which there are stats. If info_hash was supplied and was valid, this dictionary will contain a single key/value. Each key consists of a 20-byte binary info_hash value. The value of that key is yet another nested dictionary containing the following:
+
+complete: number of peers with the entire file, i.e. seeders (integer)
+downloaded: total number of times the tracker has registered a completion ("event=complete", i.e. a client finished downloading the torrent)
+incomplete: number of non-seeder peers, aka "leechers" (integer)
+name: (optional) the torrent's internal name, as specified by the "name" file in the info section of the .torrent file
+Note that this response has three levels of dictionary nesting. Here's an example:
+
+d5:filesd20:....................d8:completei5e10:downloadedi50e10:incompletei10eeee
+
+Where .................... is the 20 byte info_hash and there are 5 seeders, 10 leechers, and 50 complete downloads.
+
+Peer wire protocol (TCP)OverviewThe peer protocol facilitates the exchange of pieces as described in the metainfo file.
+
+Note here that the original specification also used the term "piece" when describing the peer protocol, but as a different term than "piece" in the metainfo file. For that reason, the term "block" will be used in this specification to describe the data that is exchanged between peers over the wire.
+
+A client must maintain state information for each connection that it has with a remote peer:
+
+choked: Whether or not the remote peer has choked this client. When a peer chokes the client, it is a notification that no requests will be answered until the client is unchoked. The client should not attempt to send requests for blocks, and it should consider all pending (unanswered) requests to be discarded by the remote peer.
+interested: Whether or not the remote peer is interested in something this client has to offer. This is a notification that the remote peer will begin requesting blocks when the client unchokes them.
+Note that this also implies that the client will also need to keep track of whether or not it is interested in the remote peer, and if it has the remote peer choked or unchoked. So, the real list looks something like this:
+
+am_choking: this client is choking the peer
+am_interested: this client is interested in the peer
+peer_choking: peer is choking this client
+peer_interested: peer is interested in this client
+Client connections start out as "choked" and "not interested". In other words:
+
+am_choking = 1
+am_interested = 0
+peer_choking = 1
+peer_interested = 0
+A block is downloaded by the client when the client is interested in a peer, and that peer is not choking the client. A block is uploaded by a client when the client is not choking a peer, and that peer is interested in the client.
+
+It is important for the client to keep its peers informed as to whether or not it is interested in them. This state information should be kept up-to-date with each peer even when the client is choked. This will allow peers to know if the client will begin downloading when it is unchoked (and vice-versa).
+
+Data TypesUnless specified otherwise, all integers in the peer wire protocol are encoded as four byte big-endian values. This includes the length prefix on all messages that come after the handshake.
+
+Message flowThe peer wire protocol consists of an initial handshake. After that, peers communicate via an exchange of length-prefixed messages. The length-prefix is an integer as described above.
+
+HandshakeThe handshake is a required message and must be the first message transmitted by the client.
+
+handshake:
+
+pstrlen: string length of , as a single raw byte
+pstr: string identifier of the protocol
+reserved: eight (8) reserved bytes. Each bit in these bytes can be used to change the behavior of the protocol. An email from Bram suggests that trailing bits should be used first, so that leading bits may be used to change the meaning of trailing bits.
+info_hash: 20-byte SHA1 hash of the info key in the metainfo file. This is the same info_hash that is transmitted in tracker requests.
+peer_id: 20-byte string used as a unique ID for the client. This is the same peer_id that is transmitted in tracker requests.
+In version 1.0 of the BitTorrent protocol, pstrlen=19, and pstr="BitTorrent protocol".
+
+The initiator of a connection is expected to transmit their handshake immediately. The recipient may wait for the initiator's handshake, if it is capable of serving multiple torrents simultaneously (torrents are uniquely identified by their info_hash). However, the recipient must respond as soon as it sees the info_hash part of the handshake. The tracker's NAT-checking feature does not send the peer_id field of the handshake.
+
+If a client receives a handshake with an info_hash that it is not currently serving, then the client must drop the connection.
+
+If the initiator of the connection receives a handshake in which the peer_id does not match the expected peer_id, then the initiator is expected to drop the connection. Note that the initiator presumably received the peer information from the tracker, which includes the peer_id that was registered by the peer. The peer_id from the tracker and in the handshake are expected to match.
+
+
+peer_idThere are mainly two conventions how to encode client and client version information into the peer_id, Azureus-style and Shadow's-style.
+
+Azureus-style uses the following encoding: '-', two characters for client id, four ascii digits for version number, '-', followed by random numbers.
+
+For example: '-AZ2060-'...
+
+known clients that uses this encoding style are:
+
+'AZ' - Azureus
+'BB' - BitBuddy
+'CT' - CTorrent
+'MT' - MoonlightTorrent
+'LT' - libtorrent
+'BX' - Bittorrent X
+'TS' - Torrentstorm
+'TN' - TorrentDotNET
+'SS' - SwarmScope
+'XT' - XanTorrent
+Shadow's style uses the following encoding: one ascii alphanumeric for client identification, three ascii digits for version number, '----', followed by random numbers.
+
+For example: 'S587----'...
+
+known clients that uses this encoding style are:
+
+'S' - Shadow's client
+'U' - UPnP NAT Bit Torrent
+'T' - BitTornado
+'A' - ABC
+Bram's client now uses this style... 'M3-4-2--'.
+
+BitComet does something different still. Its peer_id consists of four ASCII characters 'exbc', followed by a null byte, followed by a single ASCII numeric digit, followed by random characters. The digit seems to denote the version of the software, though it appears to have no connection with the real version number. The digit is incremented with each new BitComet release.
+
+Many clients are using all random numbers or 12 zeroes followed by random numbers (like older versions of Bram's client).
+
+MessagesAll of the remaining messages in the protocol take the form of . The length prefix is a four byte big-endian value. The message ID is a single decimal character. The payload is message dependent.
+
+keep-alive: The keep-alive message is a message with zero bytes, specified with the length prefix set to zero. There is no message ID and no payload.
+
+choke: The choke message is fixed-length and has no payload.
+
+unchoke: The unchoke message is fixed-length and has no payload.
+
+interested: The interested message is fixed-length and has no payload.
+
+not interested: The not interested message is fixed-length and has no payload.
+
+have: The have message is fixed length. The payload is the zero-based index of a piece that has been successfully downloaded.
+
+bitfield: The bitfield message may only be sent immediately after the handshaking sequence is completed, and before any other messages are sent. It is optional, and need not be sent if a client has no pieces.
+
+The bitfield message is variable length, where X is the length of the bitfield. The payload is a bitfield representing the pieces that have been successfully downloaded. The high bit in the first byte corresponds to piece index 0. Bits that are cleared indicated a missing piece, and set bits indicate a valid and available piece. Spare bits at the end are set to zero.
+
+A bitfield of the wrong length is considered an error. Clients should drop the connection if they receive bitfields that are not of the correct size, or if the bitfield has any of the spare bits set.
+
+request: The request message is fixed length, and is used to request a block. The payload contains the following information
+index: integer specifying the zero-based piece index
+begin: integer specifying the zero-based byte offset within the piece
+length: integer specifying the requested length. This value must not exceed 2^17 bytes, typical values are 2^15 bytes.
+The observant reader will note that a block is typically smaller than a piece (which is commonly >= 2^18 bytes). A client should close the connection if it receives a request for more than 2^17 bytes.
+
+piece: The piece message is variable length, where X is the length of the block. The payload contains the following information
+index: integer specifying the zero-based piece index
+begin: integer specifying the zero-based byte offset within the piece
+block: block of data, which is a subset of the piece specified by index.
+cancel: The cancel message is fixed length, and is used to cancel block requests. The payload is identical to that of the "request" message. It is typically used during "End Game" (see the Algorithms section below).
+
+AlgorithmsSuper Seeding(This was not part of the original specification)
+
+The super-seed feature in S-5.5 and on is a new seeding algorithm designed to help a torrent initiator with limited bandwidth "pump up" a large torrent, reducing the amount of data it needs to upload in order to spawn new seeds in the torrent.
+
+When a seeding client enters "super-seed mode", it will not act as a standard seed, but masquerades as a normal client with no data. As clients connect, it will then inform them that it received a piece -- a piece that was never sent, or if all pieces were already sent, is very rare. This will induce the client to attempt to download only that piece.
+
+When the client has finished downloading the piece, the seed will not inform it of any other pieces until it has seen the piece it had sent previously present on at least one other client. Until then, the client will not have access to any of the other pieces of the seed, and therefore will not waste the seed's bandwidth.
+
+This method has resulted in much higher seeding efficiencies, by both inducing peers into taking only the rarest data, reducing the amount of redundant data sent, and limiting the amount of data sent to peers which do not contribute to the swarm. Prior to this, a seed might have to upload 150% to 200% of the total size of a torrent before other clients became seeds. However, a large torrent seeded with a single client running in super-seed mode was able to do so after only uploading 105% of the data. This is 150-200% more efficient than when using a standard seed.
+
+Super-seed mode is NOT recommended for general use. While it does assist in the wider distribution of rare data, because it limits the selection of pieces a client can downlad, it also limits the ability of those clients to download data for pieces they have already partially retrieved. Therefore, super-seed mode is only recommended for initial seeding servers.
+
+Why not rename it to e.g. "Initial Seeding Mode" or "Releaser Mode" then?
+
+Piece downloading strategyClients may choose to download pieces in random order.
+
+A better strategy is to download pieces in rarest first order. The client can determine this by keeping the initial bitfield from each peer, and updating it with every have message. Then, the client can download the pieces that appear least frequently in these peer bitfields.
+
+End GameWhen a download is almost complete, there's a tendency for the last few blocks to trickle in slowly. To speed this up, the client sends requests for all of its missing blocks to all of its peers. To keep this from becoming horribly inefficient, the client also sends a cancel to everyone else every time a block arrives.
+
+There is no documented thresholds, recommended percentages, or block counts that could be used as a guide or Recommended Best Practice here.
+
+Choking and Optimistic UnchokingChoking is done for several reasons. TCP congestion control behaves very poorly when sending over many connections at once. Also, choking lets each peer use a tit-for-tat-ish algorithm to ensure that they get a consistent download rate.
+
+The choking algorithm described below is the currently deployed one. It is very important that all new algorithms work well both in a network consisting entirely of themselves and in a network consisting mostly of this one.
+
+There are several criteria a good choking algorithm should meet. It should cap the number of simultaneous uploads for good TCP performance. It should avoid choking and unchoking quickly, known as 'fibrillation'. It should reciprocate to peers who let it download. Finally, it should try out unused connections once in a while to find out if they might be better than the currently used ones, known as optimistic unchoking.
+
+The currently deployed choking algorithm avoids fibrillation by only changing choked peers once every ten seconds.
+
+Reciprocation and number of uploads capping is managed by unchoking the four peers which have the best upload rate and are interested. This maximizes the client's download rate. These four peers are referred to as downloaders, because they are interested in downloading from the client.
+
+Peers which have a better upload rate (as compared to the downloaders) but aren't interested get unchoked. If they become interested, the downloader with the worst upload rate gets choked. If a client has a complete file, it uses its upload rate rather than its download rate to decide which peers to unchoke.
+
+For optimistic unchoking, at any one time there is a single peer which is unchoked regardless of it's upload rate (if interested, it counts as one of the four allowed downloaders). Which peer is optimistically unchoked rotates every 30 seconds. Newly connected peers are three times as likely to start as the current optimistic unchoke as anywhere else in the rotation. This gives them a decent chance of getting a complete piece to upload.
+
+Anti-snubbingOccasionally a BitTorrent peer will be choked by all peers which it was formerly downloading from. In such cases it will usually continue to get poor download rates until the optimistic unchoke finds better peers. To mitigate this problem, when over a minute goes by without getting a single piece from a particular peer, BitTorrent assumes it is "snubbed" by that peer and doesn't upload to it except as an optimistic unchoke. This frequently results in more than one concurrent optimistic unchoke, (an exception to the exactly one optimistic unchoke rule mentioned above), which causes download rates to recover much more quickly when they falter.
+
+Change LogPut your changes below this line, so that the most recent changes appear first. The change log should be purged from time to time. Please preserve the last month's worth of change logs.
+
+frozen at wideopenwest dot com - 2004-10-22
+
+Cleared up possible confusion regarding the "uploaded" and "downloaded" parameters sent to the tracker. The text originally did not indicate whether the values in these parameters reset on each new session with a tracker.
+dictionary with has the => dictionary with the
+SpookyET - 2004-10-02
+
+Added "complete" and "incomplete" keys to the announce.
+SpookyET - 2004-09-28
+
+Changed "piece-section" to "block", which is a more popular term.
+WhitSlack (mwhitlock@whitsoftdev.com) -- 2004-09-20
+
+Fixed a typo: numwanted => numwant in paragraph about announce interval.
+Added BitComet peer_id encoding style.
+Added reference in Tracker HTTP Protocol to peer_id description in Peer wire protocol.
+Concur with deltab on breaking this page up.
+deltab - 2004-09-06
+
+This page is rather large, so I'd like to see it split up into sections with their own pages; possibly bencoding, metadata file format, tracker/client protocol, peer/peer protocol, peer IDs, and algorithms/strategies. But it would be a big change, so I've not just gone ahead and done it. Any comments, objections?
+Daniel Wang (support@btvampire.com) - 2004-08-09
+
+Added BitBuddy client ID.
+SpookyET - 2004-06-15
+
+Fixed the sorting of keys in dictionaries specification.
+SpookyET - 2004-06-04
+
+Added anti-snubbing specification
+Stormblade (stormblade@torrentstorm.com) - 2004-06-02
+
+Added new client ID for Brams client.
+SpookyET - 2004-05-29
+
+Removed "Stealth Seeding", because it was an incomplete specification to "super-seeding".
+Added the full super-seeding specification.
+webmaster@andreas-diem.at - 2004-05-08
+
+Added BitTornado client ID.
+Added UPnP NAT Bit Torrent Url
+dan_f@blueyonder.co.uk - 2004-05-07
+
+Added new XanTorrent client ID.
+agthorr@barsoom.org - 2004-04-06
+
+Described the NAT-checker's short handshake.
+Added ?SwarmScope client ID.
+agthorr@barsoom.org - 2004-03-23
+
+Fixed description of pstrlen, which previously seemed to suggest that the value is encoded in ASCII. It's raw binary, not decimal.
+amand@alrj.org - 2004-03-11
+
+Set length of "have" message to 5 instead of 2, since the piece index is an int, coded on 4 bytes.
+flabdablet@yahoo.com - 2004-03-02
+
+s/delimeter/delimiter/g
+Stormblade (stormblade@torrentstorm.com) - 2004-01-27
+
+Added Torrentstorm client ID.
+Bram - 2004-01-10
+
+Got rid of compression section, because it was unofficial, and a bad idea
+removed link to specification two point zero page, since it was nothing of the sort
+steveninweston@hotmail.com - 2004-01-01
+
+Added "Extensions" and "Compression"
+dpmott@sep.com - 2003-12-30
+
+Added "Related Documents" and "Change Log" section.
+Updated "Conventions" section to mention the change log.
+Added link to BitTorrentSpecificationTwoPointZero
+
+BitTorrent 协议规范（BT协议集合）九
+Tracker服务器源码分析之一：总述
+
+作者：小马哥
+日期：2004-5-29
+
+  tracker服务器是BT下载中必须的角色。一个BT client 在下载开始以及下载进行的过程中，要不停的与 tracker 服务器进行通信，以报告自己的信息，并获取其它下载client的信息。这种通信是通过 HTTP 协议进行的，又被称为 tracker HTTP 协议，它的过程是这样的：
+
+  client 向 tracker 发一个HTTP 的GET请求，并把它自己的信息放在GET的参数中；这个请求的大致意思是：我是xxx（一个唯一的id），我想下载yyy文件，我的ip是aaa，我用的端口是bbb。。。
+
+  tracker 对所有下载者的信息进行维护，当它收到一个请求后，首先把对方的信息记录下来（如果已经记录在案，那么就检查是否需要更新），然后将一部分（并非全部，根据设置的参数已经下载者的请求）参与下载同一个文件（一个tracker服务器可能同时维护多个文件的下载）的下载者的信息返回给对方。
+
+  Client在收到tracker的响应后，就能获取其它下载者的信息，那么它就可以根据这些信息，与其它下载者建立连接，从它们那里下载文件片断。
+
+关于client和tracker之间通信协议的细节，在“BT协议规范”中已经给出，这里不再重复。下面我们具体分析 tracker服务器的实现细节。
+
+
+从哪里开始？
+
+  要建立一个 tracker服务器，只要运行 bttrack.py 程序就行了，它最少需要一个参数，就是 –dfile，这个参数指定了保存下载信息的文件。Bttrack.py 调用 track.py 中的 track()函数。因此，我们跟踪到 track.py 中去看track() 函数。
+
+Track.py：track()
+
+  这个函数首先对命令行的参数进行检查；然后将这些参数保存到 config 字典中。在BT中所有的工具程序，都有类似的处理方式。
+
+接下来的代码：
+
+  r = RawServer(Event(), config['timeout_check_interval'], config['socket_timeout'])
+
+  t = Tracker(config, r)
+
+  r.bind(config['port'], config['bind'], True)
+
+  r.listen_forever(HTTPHandler(t.get, config['min_time_between_log_flushes']))
+
+  t.save_dfile()
+
+
+首先是创建一个 RawServer 对象，这是一个服务器对象，它将实现一个网络服务器的一些细节封装起来。不仅tracker服务器用到了 RawServer，我们以后还可以看到，由于每个 client端也需要给其它 client 提供下载服务，因此也同时是一个服务器，client的实现中，也用到了RawServer，这样，RawServer的代码得到了重用。关于 RawServer的详细实现，在后面的小节中进行分析。
+
+接着是创建一个 Tracker对象。
+
+然后让RawServer绑定在指定的端口上（通过命令行传递进来）。
+
+最后，调用 RawServer::listen_forever() 函数，使得服务器投入运行。
+
+最后，在服务器因某些原因结束运行以后，调用 Tracker::save_dfile() 保存下载信息。这样，一旦服务器再次投入运行，可以恢复当前的状态。
+
+其它信息：
+
+1、 BT源码的分布：
+
+把BT的源码展开之后，可以看到有一些python程序，还有一些说明文件等等，此外还有一个BitTorrent目录。这些 python程序，实际是一些小工具，比如制作 metafile的btmakemetafile.py、运行tracker服务器的bttrack.py、运行BT client端的 btdownloadheadless.py 等等。而这些程序中，用到的一些 python 类的实现，都放在子目录 BitTorrent 下面。我们的分析工作，通常是从工具程序入手，比如 bttrack.py，而随着分析的展开，则重点是看 BitTorrenet子目录下的代码。
+
+BT作者 Bram Cohen 在谈到如何开发可维护的代码的一篇文章中（http://www.advogato.org/article/258.html），其中提到的一条就是开发一些小工具以简化工作，我想BT的这种源码结构，也正是作者思想的一种体现吧。
+
+2、 我们看到，python和我们以前接触的 c/c++ 不一样的第一个地方就是它的函数在定义的时候，不用指定参数类型。既然这样，那么，在调用函数的时候，你可以传递任意类型的参数进来。例如这样的函数：
+
+def foo(arg):
+
+  print type(arg)
+
+  你可以这样来调用：
+
+  a = 100
+
+  b = “hello world”
+
+  foo(a)
+  foo(b)
+
+  输出结果是：
+
+
+  这是因为，第一次调用 foo()的时候，传递的是一个整数类型，而第二次调用的时候，传递的是一个字符串类型。
+
+这种参数具有动态类型的特性，是 c/c++等传统的语言是所不具备的。这也是 python 被称为动态语言的一个原因吧。C++的高级特性模板，虽然也使得参数类型可以动态化，但使用起来，远没有python这么简单方便。
+
+BitTorrent 协议规范（BT协议集合）十
+Tracker服务器源码分析之二：RawServer类
+作者：小马哥
+
+这篇文章，我们来分析 RawServer 以及一些相关的类。RawServer 类的实现代码，在 BitTorrent 子目录的RawServer.py 中
+
+RawServer 这个类的作用是实现一个网络服务器。关于网络编程的知识，《unix网络编程：卷1》是最经典的书籍，你如果对这块不了解，建议抽时间看看这本书。 RawServer 实现的是一种事件多路复用、非阻塞的网络模型。它使用的是 poll() （而不是我们常见的select()，关于 poll和select的比较，也在《unix网络编程：卷1》中有介绍）函数，处理过程大致是这样的：
+
+首先创建一个监听 socket，然后将这个 socket 加入 poll 的事件源；
+
+随后进入服务处理循环，即：
+
+调用 poll() 函数，这个函数会阻塞，直到网络上有某些事件发生或者超时才返回给调用者；
+
+在 poll()返回之后，先检查一下是否有没有处理的任务，如果有，那么先完成这些任务。然后根据事件类型进行处理。
+
+如果是连接请求（监听 socket上的POLLIN事件）到来，它 accept这个请求，如果 accept 成功，那么就和一个 client建立了连接，于是将 accept() 新创建的 socket 加入 poll 的事件源；
+
+如果在已经建立的连接上（连接socket上的POLLIN事件），有数据可读，那么将数据从 client 端读过来，做进一步处理；
+
+如果已经建立的连接已经准备好（连接socket上的POLLOUT事件），可以发送数据，则检查是否有数据需要发送，如果有，那么发送数据给 client 端。
+
+（所以，tracker是一个单进程的服务器，并没有用到线程。）
+
+Bram Cohen 认为软件的可维护性非常重要，使代码易于维护的重要一条就是设计可重用的类，RawServer 在设计的时候，充分考虑到了可重用性，集中表现在两个地方：
+
+1、 将网络 I/O 和数据分析处理分离。
+
+网络服务器的事件多路复用、网络I/O 部分通常是固定不变的，而数据在读取之后，进行分析处理的过程则是可变的。RawServer 将可变的数据处理工作，交给另外一个抽象的类 Handler （实际上并没有这么一个类）来处理。比如，在 tracker 服务器的实现中，具体使用的就是 HTTPHandler 类，而在 以后将要分析的 BT client 实现代码中，用到的具体的Handler 是 Encoder 类。
+
+2、 采用任务队列来抽象出任务处理的过程。
+
+RawServer维护了一个任务队列 unscheduled_tasks（实际是一个二元组的list，二元组的第一项是一个函数，第二项是超时时间）。在初始化的时候，首先向这个队列中加入一个任务：scan_for_timeouts()，这样，每隔一段时间，服务器就会去检查一下是否有连接超时。如果有其它
+
+
+RawServer的成员函数中，对外暴露的有：
+
+u     __init__：（初始化函数）
+
+u     add_task()：
+
+  在任务列表中增加一项任务（一个任务是一个函数以及一个指定的超时时间的组合）
+
+u     bind()：
+
+  首先创建一个socket，然后设置socket的属性： SO_REUSEADDR和IP_TOS,，这两个属性的具体含义请参考《unix网络编程：卷1》，另外还将 socket 设置为非阻塞的。相对于阻塞的 socket来说，非阻塞的 socket 在网络 I/O 性能上要提高许多，但是与此同时，编程的复杂度也要提高一些。象 tracker这种可能同时要处理成千上万个并发连接的服务器，只能采用非阻塞的socket。
+
+  然后将该 socket和指定ip已经端口绑定；
+
+  最后把这个socket 加入 poll的事件源。
+
+u     start_connection()：
+
+  对外主动建立一个连接，这个函数在处理NAT穿越的时候用到了，我们后面分析到 NAT穿越的时候，再具体讲解。
+
+u     listen_forever()：
+
+  这个函数的功能就是实现了我在前面描述的网络服务器的处理过程。我们看到，它唯一的参数是handler，handler的作用就是封装了对数据的具体处理。
+
+listen_forever()把对网络事件的处理过程，交给了 handle_events()。
+
+其它函数，包括handle_events()，都是内部函数（也就是外部不会直接来调用这些函数）。Python没有c++那样 public、protected、private 这样的保护机制，python类的内部函数命名的惯例是以下划线开始，例如 RawServer 中的 _close_dead()等。
+
+u     handle_events()：
+
+事件处理过程，主要是根据三种不同的网络事件分别处理，一是连接事件，二是读事件、三是写事件。
+
+if sock == self.server.fileno()
+
+这段代码判断发生事件的socket是否是监听 socket，如果是，那么说明是连接事件。
+
+连接事件的处理：
+
+通过 accept 来接受连接，并将新建立的 socket 设置为非阻塞。
+
+判断当前连接数是否已经达到了最大值（为了限制并发连接的数目，在初始化 RawServer的时候，需要指定最大连接数目），如果已经达到最大值，那么关闭这个新建的连接。
+
+否则，根据新的 socket 创建一个 SingleSocket 对象，（SingleSocket 封装了对 socket的操作。）将这个对象加入内部的列表single_sockets中，以备后用。
+
+将这个新 socket加入 poll 的事件源
+
+最后，调用 Handler 的external_connection_made() 函数，关于这个函数，在后面分析 HTTPHandler 时再讨论。
+
+if (event & POLLIN) != 0:
+
+这段代码判断是否是读事件
+
+读事件的处理：
+
+首先刷新一下连接的最后更新时间 （last_hit）。
+
+然后读取数据；
+
+如果什么也没读到，那么说明连接被关闭了（在网络编程中，如果一个连接正常的被关闭，那么，也会触发读事件，只不过什么也读不到）
+
+否则，调用 Handler的 data_came_in() 函数来处理读到的数据。
+
+if (event & POLLOUT) != 0 and s.socket is not None and not s.is_flushed():
+
+这段代码判断是否是写事件，而且确实有数据需要发送。在一个连接可以写的时候，就会发生写事件。
+
+写事件的处理：
+
+实际代码是在 SingleSocket的 try_write()函数中。
+
+在一个非阻塞的连接上发送指定大小的数据，很可能在一次发送过程中，数据没有被完全发送出去（只发送了一部分）就返回了，所以，每次 write之后，必须判断是否完全发送了数据。如果没有发送完，那么下次有读事件的时候，还得回来继续发送未完得数据。这也是这个函数叫做 try_write 的原因吧。
+
+try_write() 在最后，要重新设置 poll 的事件源。如果数据全部发送完毕了，那么只需要监听读事件（POLLIN）否则，既要监听读事件，也要监听写事件（POLLOUT），这样，一旦连接变的可写，可以继续将剩下的数据发送出去。
+
+u     scan_for_timeouts()：
+
+任务处理函数，它首先把自身加入未处理任务队列中，这样，经过一段时间，可以保证这个函数再次被调用，从而达到周期性调用的效果。
+
+它检查每个连接是否超过指定时间没有被刷新，如果是，则该连接可能已经僵死，那么它关闭这个连接。
+
+u     pop_unscheduled()：
+
+从任务列表中弹出一个未处理的任务。
+
+与 RawServer 配合使用的是 SingleSocket 类，这是一个辅助类，主要目的是封装对 socket的处理吧。包括数据的发送，都交给它来处理了。这个类比较简单，大家可以自己去看，我就不罗嗦了。
+
+以上是对 RasServer 的具体实现的一个分析，可能读者看的还是晕晕糊糊，没办法，还是必须自己去看源代码，然后在遇到问题的时候，回头再来看这篇文章，才会有帮助。如果不亲自看源码，终究是纸上谈兵。
+
+我们再来小结一下。
+
+RawServer 封装了网络服务器的实现细节，它实现了一种事件多路处理、非阻塞的网络模型。它主要负责建立新的连接，从网络读取和发送数据，而对读到的数据的具体处理工作，交给 Handler 类来处理，从而把网络I/O和数据处理分离开来，使得 RawServer可以重用。Handler 类是在调用 listen_forever() 的时候，由调用者传递进来的，具体到 tracker服务器，就是HTTPHandler。有了 RawServer，tracker 就可以作为一个网络服务器运行了。
+
+BitTorrent 协议规范（BT协议集合）十一
+Tracker服务器源码分析之三：HTTPHandler 类
+
+作者：小马哥
+
+本篇文章分析 HTTPHandler类，它在 HTTPHandler.py 文件中。
+
+上一篇我们讲到， RawServer 只负责网络 I/O，也就是从网络上读取和发送数据，至于读到的数据如何分析，以及应该发送什么样的数据，则交给 Handler 类来处理。如果是用 c++ 来实现的话，那么 Handler 应该是一个接口类（提供几个虚函数作为接口），但是 python 动态语言的特性，并不需要专门定义这么一个接口类，所以实际上并没有 Handler 这么一个类。任何一个提供了以下成员函数的类，都可以作为一个 Handler 类来与 RawServer 配合，它们是：
+
+external_connection_made()：在建立新的连接的时候被调用
+
+data_came_in()：连接上有数据可读的时候被调用
+
+connection_flushed()：当在某个连接上发送完数据之后被调用
+
+  HTTPHandler 就是这样一个 Handler 类，它具备以上接口。
+
+  HTTPHandler 代码很少，因为它把主要工作又交给 HTTPConnection 了。
+
+  我们看 HTTPHandler 类的这几个函数：
+
+l       external_connection_made()：
+
+每当新来一个连接的时候，就创建一个 HTTPConnection 类。
+
+l       data_came_in()：
+
+当连接上有数据可读的时候，调用 HTTPConnection::data_came_in()。我们接下去看HTTPConnection::data_came_in()。
+
+我们知道，BT client端与 tracker服务器之间是通过tracke HTTP 协议来进行通信的。HTTP协议分为请求（request）和响应（response），具体的协议请看相关的 RFC 文档。我这里简单讲一下。
+
+对 tracke 服务器来说，它读到的数据是 client 端的HTTP 请求。
+
+HTTP请求以行为单位，行的结束符是“回车换行”，也就是 ascii 字符 “\r”和“\n”。
+
+第一行是请求的 URL，例如：
+
+GET   /announce?ip=aaaaa;port=bbbbbbb HTTP/1.0
+
+这行数据被空格分为三部分，
+
+第一部分GET表示命令，其它命令还有POST、HEAD等等，常用的就是GET了。
+
+第二部分是请求的URL，这里是 /announce?ip=aaaaa;port=bbbbbbb。如果是普通的上网浏览网页，那么URL 就是我们要看的网页在该web服务器上的相对路径。但是，这里的URL仅仅是交互信息的一种方式，client 端把要报告给 tracker 的信息，放在URL中，例子里面是 ip 和 port，更详细的信息请看“BT协议规范”中 tracker 协议部分。
+
+第三部分是HTTP协议的版本号，在程序中忽略。
+
+接下来的每一行，都是HTTP协议的消息头部分，例如：
+
+Host:www.sina.com.cn
+
+Accept-encoding:gzip
+
+通过消息头，tracker服务器可以知道 client端的一些信息，这其中比较重要的就是 Accept-encoding，如果是 gzip ，那么说明 client 可以对 gzip 格式的数据进行解压，那么tracker服务器就可以考虑用 gzip 把响应数据压缩之后再传回去，以减少网络流量。我们可以在代码中看到相应的处理。
+
+在消息头的最后，是一个空行，表示消息头结束了。对GET和HEAD命令来说，消息头的结束，也就意味着整个client端的请求结束了。而对 POST 命令来说，可能后面还跟着其它数据。由于我们的 tracker服务器只接受 GET 和 HEAD 命令，所以在协议处理过程中，如果遇到空行，那么就表示处理结束。
+
+HTTPConnection::data_came_in() 用一个循环来进行协议分析：
+
+首先是寻找行结束符号：
+
+i = self.buf.index('\n')
+
+（我认为仅仅找 “\n”并不严谨，应该找 “\r\n”这个序列）。
+
+如果没有找到，那么 index() 函数会抛出一个异常，而异常的处理是返回 True，表示数据不够，需要继续读数据。
+
+如果找到了，那么 i 之前的字符串就是完整的一行。于是调用协议处理函数，代码是：
+
+self.next_func = self.next_func(val)
+
+在 HTTPConnection 的初始化的时候，有这么一行代码：
+
+self.next_func = self.read_type
+
+next_func 是用来保存协议处理函数的，所以，第一个被调用的协议处理函数就是 read_type()。它用来分析client端请求的第一行。在 read_type() 的最后，我们看到：
+
+return self.read_header
+
+这样，在下一次调用 next_func 的时候，就是调用 read_header()了，也就是对 HTTP 协议的消息头进行分析。
+
+下面先看 read_type()，
+
+它首先把 GET 命令中的 URL 部分保存到 self.path中，因为这是 client端最关键的信息，后面要用到。
+
+然后检查一下是否是GET或者HEAD命令，如果不是，那么说明数据有错误。返回None，否则return self.read_header
+
+接下来我们看read_header()，
+
+这其中，最重要的就是对空行的处理，因为前面说了，空行表示协议分析结束。
+
+在检查完 client 端是否支持 gzip 编码之后，调用：
+
+r = self.handler.getfunc(self, self.path, self.headers)
+
+通过一层层往后追查，发现 getfunc() 实际是 Tracker::get()，也就是说，真正对 client 端发来的请求进行分析，以及决定如何响应，是由 Tracker 来决定的。是的，这个 Tracker 在我们tracker 服务器源码分析系列的第一篇文章中就已经看到了。在创建 RawServer 之后，马上就创建了一个 Tracker 对象。所以，要了解 tracker 服务器到底是如何工作的，需要我们深入进去分析 Tracker 类，那就是我们下一篇文章的工作了。
+
+在调用完 Tracker::get() 之后，返回的是决定响应给 client 端的数据，
+
+if r is not None:
+
+self.answer(r)
+
+最后，调用 answer() 来把这些数据发送给 client 端。
+
+对 answer() 的分析，我们在下一篇分析 Tracker类的文章中一并讲解。
+
+l       connection_flushed()：
+
+tracker服务器用的是非阻塞的网络 I/O ，所以不能保证在一次发送数据的操作中，把要发送的数据全部发送出去。
+
+这个函数，检查在某个连接上需要发送的数据，是否已经全部被发送出去了，如果是的话，那么关闭这个连接的发送端。（为什么仅仅关闭发送端，而不是完全关闭这个连接了？疑惑）。
+BitTorrent 协议规范（BT协议集合）十二
+作者：小马哥
+
+概述：
+相对于 tracker 服务器来说，BT客户端要复杂的多，Bram Cohen 花了一年 full time 的时间来完成 BT，我估计其中大部分时间是用在 BT 客户端的实现和调试上了。
+由于 BT 客户端涉及的代码比较多，我不能再象分析 tracker 服务器那样，走上来就深入到细节之中去，那样的话，我写的晕晕糊糊，大家看起来也不知所云。所以第一篇文章先来谈谈客户端的功能、相关协议，以及客户端的总体架构和相关的类的层次结构。这样，从整体上把握之后，大家在自己分析代码的过程中，就能做到胸有成竹。
+
+客户端的功能：
+
+不看代码，只根据 BT 的相关原理，大致可以推测，客户端需要完成以下功能：
+1、解析 torrent 文件，获取要下载的文件的详细信息，并在磁盘上创建空文件。
+2、与 tracker服务器 建立连接，并交互消息。
+3、根据从 tracker 得到的信息，跟其它 peers 建立连接，并下载需要的文件片断
+4、监听某端口，等待其它peers 的连接，并提供文件片断的上传。
+
+相关协议：
+对客户端来说，它需要处理两种协议：
+1、与 tracker 服务器交互的 track HTTP协议。
+2、与其它 peers 交互的 BT 对等协议。
+
+总体架构：
+从总体上来看，BT客户端实际是以一个服务器的形式在运行。这一点似乎有些难以理解，但确实是这样。
+为什么是一个服务器了？
+客户端的主要功能是下载文件，但作为一种P2P软件，同时它必须提供上传服务，也就是它必须守候在某一个端口上，等待其它peers 的连接请求。从这一点上来说，它必须以一个服务器的形式运行。我们在后面实际分析代码的时候，可以看到，客户端复用了 RawServer 类用来实现网络服务器。
+客户端的代码，是从 download.py 开始的，首先完成功能1，之后就进入服务器循环，在每一次循环过程中，完成功能 2、3、4。其中，Rerequester 类负责完成功能2，它通过 RawServer::add_task()，向 RawServer 添加自己的任务函数，这个任务函数，每隔一段时间与 tracker 服务器进行通信。而Encoder、Connecter 等多个类组合在一起，完成功能3和4。
+
+类层次结构：
+
+BT 客户端涉及的类比较多，我首先大致描述一下这些类的功能，然后给出它们的一个层次结构。
+
+1、RawServer：负责实现网络服务器
+
+2、Rerequester：负责和 tracker 通信。它调用 RawServer::add_task() ，向 RawServer 添加自己的任务函数 Rerequester::c()。
+
+3、Encoder：一种 Handler类（在分析 tracker 服务器时候提到），负责处理与其它peers建立连接和以及对读取的数据按照BT对等协议进行分析。
+
+Encoder 类在Encrypter.py中，该文件中，还有一个 Connection 类，而在 Connecter.py 文件中，也有一个 Connection 类，这两个同名的 Connection 类有些蹊跷，为了区分，我把它们重新命名为 E-Connection 和 C-Connection。
+
+
+3.1、E-Connection：负责 TCP 层次上的连接工作
+这两个 Connection 是有区别的，这是因为BT对等协议需要在两个层次上建立连接。首先是 TCP 层次上的连接，也就是经过 TCP 的三次握手之后，建立连接，这个连接由 E-Connection 来管理。在 Encoder:: external_connection_made() 函数中可以看到，一旦有外部连接到来，则创建一个 E-Connection 类。
+
+3.2、C-Connection：管理对等协议层次上的连接。
+在 TCP 连接之上，是 BT对等协议的连接，它需要经过BT对等协议的两次“握手”，握手的细节大家去看BT对等协议。过程是这样的：
+为了便于述说，我们假设一个BT客户端为 A，另一个客户端为 X。
+如果是X主动向A发起连接，那么在TCP连接建立之后，A立刻利用这个连接向X发送BT对等协议的“握手”消息。同样，X在连接一旦建立之后，向 A发送BT对等协议的“握手”消息。A一旦接收到X的“握手”消息，那么它就认为“握手”成功，建立了BT对等协议层次上的连接。我把它叫做“对等连接”。A 发送了一个消息，同时接收了一个消息，所以这个握手过程是两次“握手”。
+同样，对X 来说，因为连接是它主动发起的，所以它在发送完“握手”消息之后，就等待A的“握手”消息，如果收到，那么它也认为“对等连接”建立了。
+一旦“对等连接”建立之后，双方就可以通过这个连接传递消息了。
+
+这样，原来我所疑惑的一个问题也就有了答案。就是：如果 X 需要从 A 这里下载数据，那么它会同 A 建立一个连接。假如 A 又希望从 X 那里下载数据，它需不需要重新向 X 发起另外一个连接了？答案显然是不用，它会利用已有的一条连接。
+
+也就是说，不管是X主动向A发起的连接，还是 A 主动向 X发起的连接，一旦建立之后，它们的效果是一样的。这个同我们平时做 C/S结构的网络开发是有区别的。
+
+我们可以看到在 E-Connection的初始化函数中，会主动连接的另一方发送“握手”消息，在 E-Connection::data_came_in() 中，会首先对对方的“握手”消息进行处理。这正是我上面所描述的情形。
+在 E-Connection::read_peer_id() 中，是对“握手”消息的最后一项 peer id进行处理，一旦正确无误，那么就认为“对等连接”完成，
+
+self.encoder.connecter.connection_made(self)
+
+在 Connecter::connection_made() 函数中，就创建了管理“对等连接”的 C-Connectinon类。所以，更高一层的“对等连接”是由 C-Connection 来管理的。
+
+3.3、Connecter：连接器，管理下载、上传、阻塞、片断选择、读写磁盘等等。
+
+下载和上传不是孤立的，它们之间相互影响。下载需要有片断选择算法，上传的时候要考虑阻塞，片断下载之后，要写到磁盘上。上传的时候，也需要从磁盘读取。
+这些任务，是由 Connecter 来统一调度的。
+
+类层次结构，我用缩进来表示一种包含关系。
+
+Encoder:
+  E-Connection
+    C-Connection
+        Upload
+        SingleDownloader
+    Connecter
+        Choker：负责阻塞的管理
+        Downloader：
+          SingleDownloader
+          Picker：片断选择策略
+          StorageWrapper：
+          
+BitTorrent 协议规范（BT协议集合）十三
+作者：小马哥
+
+由于 Storage 类比较简单，我直接在源码基础上进行注释。掌握Storage，为进一步分析 StorageWrapper 类打下基础。
+
+几点说明：
+
+1、 Storage 类封装了对磁盘文件的读和写的操作。
+
+2、 BT既支持单个文件的下载，也支持多个文件，包括可以有子目录。但是它并不是以文件为单位进行下载和上传的，而是以“文件片断”为单位。这可以在BT协议规范以及另一篇讲BT技术的文章中看到。所以，对于多个文件的情况，它也是当作一个拼接起来的“大文件”来处理的。例如，有文件 aaa和bbb，大小分别是 400和1000，那么它看作一个大小为 1400 的大文件，并以此来进行片断划分。
+
+3、 文件在下载过程中，同时提供上传，所以是以读写方式打开的，wb+和rb+都指的读写方式。在下载完毕之后，改为只读方式。
+
+4、 由于下载可能中断，所以在 Storage 初始化的时候，磁盘上可能已经存在文件的部分数据，必须检查一下文件的大小。为了便于描述，我们把完整文件的大小称为“实际长度”，把文件当前的大小成为“当前长度”。
+
+class Storage:
+
+# files 是一个二元组的列表（list），二元组包含了文件名称和长度，例如：
+
+[(“aaa”, 100), (“bbb”, 200)]
+
+def __init__(self, files, open, exists, getsize):
+
+    self.ranges = []
+
+# 注意，这里是 0l，后面的l表示类型是长整形，而不是 01。
+
+    total = 0l
+
+    so_far = 0l
+
+    for file, length in files:
+
+        if length != 0:
+
+          # ranges 是一个三元组列表，三元组的格式是： 在“整个”文件的起始位置、结束位置、文件名。BT在处理多个文件的时候，是把它们看作一个拼接起来的大文件。
+
+          self.ranges.append((total, total + length, file))
+
+          total += length
+
+          # so_far 是实际存在的文件的总长度，好像没有起作用
+
+          if exists(file):
+
+            l = getsize(file)
+
+            if l > length:
+
+                l = length
+
+so_far += l
+
+# 如果文件长度为0， 则创建一个空文件
+
+          elif not exists(file):
+          open(file, 'wb').close()
+
+      # begins 是一个列表，用来保存每个文件的起始位置
+
+    self.begins = [i[0] for i in self.ranges]
+
+    self.total_length = total
+
+    self.handles = {}
+
+    self.whandles = {}
+
+    self.tops = {}
+
+    # 对于每一个文件，，，
+
+    for file, length in files:
+
+        # 如果文件已经存在
+
+        if exists(file):
+
+          l = getsize(file)
+
+          # 如果文件长度不一致，说明还没有下载完全，则以读写（rb+）的方式打开文件。
+
+          if l != length:
+
+          handles 是一个字典，用来保存所有被打开文件（无论是只读还是读写）的句柄
+
+          whandles 是一个字典，用来记录对应文件是否是以写的方式打开（读写也是一种写）。
+
+            self.handles[file] = open(file, 'rb+')
+
+self.whandles[file] = 1 （这里是数字1，而不是字母 l）
+
+#如果文件长度大于实际长度，那么应该是出错了，截断它。
+
+            if l > length:
+
+                self.handles[file].truncate(length)
+
+          如果文件长度和实际长度一致，那么下载已经完成，以只读方式打开。
+
+          else:
+
+self.handles[file] = open(file, 'rb')
+
+          # tops 是一个 字典，保存对应文件的“当前长度”。
+
+          self.tops[file] = l （这里是字母 l，不是数字 1）
+
+        # 如果文件并不存在，那么以读写（w+）的方式打开
+
+        else:
+
+          self.handles[file] = open(file, 'wb+')
+
+          self.whandles[file] = 1
+
+# 判断起始位置为 pos，长度为 length的文件片断，在 Storage 初始化之前，是否就已经存在于磁盘上了。这个函数后面分析 StoageWrapper 类的时候会再提到。
+
+如果已经存在，那么返回 true，否则为 false。
+
+注意：如果这个片断的部分数据已经存在于磁盘上的话，那么也返回 false。
+
+在分析 StorageWrapper 的时候，才发现这里分析的不对。这个函数意思应该是：
+
+判断起始位置为 pos，长度为 length的文件片断，在 Storage 初始化之前，是否已经在磁盘上分配了空间。
+
+例如，大小为 1024k的文件，如果获得了 第1个片断（从256k到512k），那么这时候，磁盘上文件的大小是 512k（也就是分配了512k），尽管第0个片断（从0到256k）还没有获得，但磁盘上会保留这个“空洞”。
+
+  def was_preallocated(self, pos, length):
+
+    for file, begin, end in self._intervals(pos, length):
+
+        if self.tops.get(file, 0) < end:
+
+          return False
+
+    return True
+
+# 将所有原来以 读写方式打开的文件，改成只读方式打开
+
+  def set_readonly(self):
+
+    # may raise IOError or OSError
+
+    for file in self.whandles.keys():
+
+        old = self.handles[file]
+
+        old.flush()
+
+        old.close()
+
+        self.handles[file] = open(file, 'rb')
+
+# 获取所有文件的总长度
+
+  def get_total_length(self):
+
+    return self.total_length
+
+这个函数意思是检查 起始位置 为 pos，大小为 amount 的片断实际位置在哪里？
+
+例如，假设有两个文件，aaa和bbb，大小分别是 400 和 1000，那么 pos 为300，amount为200的文件片断属于哪个文件了？它分别属于两个文件，所以返回的是
+
+[(“aaa”, 300, 400), (“bbb”, 0, 100)]，
+
+也就是它既包含了 aaa 文件中从 300 到 400这段数据，也包含了 bbb 文件从 0 到 100 这段数据。
+
+  def _intervals(self, pos, amount):
+
+    r = []
+
+        # stop 是这个片断的结束位置。
+
+    stop = pos + amount
+
+# 通过这个函数，可以首先定位在哪个文件中，注意，可能在多个文件中（如果某个文件过小，那么，一段数据可能跨越几个文件）
+
+# 通过例子来解释下面这句，假设 begins = [ 100, 200, 400, 1000],而 pos = 250，那么 bisect_right(self.begins, pos) 返回的是 2，而p = bisect_right(self.begins, pos) – 1 就是 1，这表示起始位置为 250 的文件“片断”，它至少属于第1个文件（从 0 开始算起），也就是起始为200的文件。
+
+p = bisect_right(self.begins, pos) – 1
+
+# r 是一个三元组的列表，三元组格式是（文件名，在该文件的起始位置，在该文件的结束位置）。
+
+while p < len(self.ranges) and self.ranges[p][0] < stop:
+
+        begin, end, file = self.ranges[p]
+
+        r.append((file, max(pos, begin) - begin, min(end, stop) - begin))
+
+        p += 1
+
+    return r
+
+# 把从 pos开始，amount长的数据从文件中读出来，转换成一个字符串
+
+def read(self, pos, amount):
+
+    r = []
+
+    for file, pos, end in self._intervals(pos, amount):
+
+        h = self.handles[file]
+
+        h.seek(pos)
+
+r.append(h.read(end - pos))
+
+    # 把list 转换为一个字符串
+
+    return ''.join(r)
+
+# 把一段字符串写到相应的磁盘文件中。
+
+  def write(self, pos, s):
+
+    # might raise an IOError
+
+    total = 0
+
+    for file, begin, end in self._intervals(pos, len(s)):
+
+        # 如果该文件并不是以写的方式打开的，那么改成读写的方式打开
+
+        if not self.whandles.has_key(file):
+
+          self.handles[file].close()
+
+          self.handles[file] = open(file, 'rb+')
+
+          self.whandles[file] = 1
+
+h = self.handles[file]
+
+# 通过 seek 函数移动文件指针，可以看出来，文件不是按照顺序来写的，因为所获取的文件片断是随机的，所以写也是随机的。
+
+# 这里有一个疑问，假设获得了第二个文件片断，起始是 1000，大小是500，而第一个片断还没有获得，那么文件指针要移动到 1000 处，并写500个字节。这时候，文件的大小应该是 1500，尽管前面 1000 个字节是“空洞”。那么如果，直到结束，都没有获得第一个片断，又如何检测出来了？（通过检查 total？）
+
+        h.seek(begin)
+
+        h.write(s[total: total + end - begin])
+
+        total += end - begin
+
+# 关闭所有打开文件
+
+def close(self):
+
+    for h in self.handles.values():
+
+        h.close()
+
+
+BitTorrent 协议规范（BT协议集合）十四
+作者：小马哥
+
+StorageWrapper 的作用：把文件片断进一步切割为子片断，并且为这些子片断发送 request消息。在获得子片断后，将数据写入磁盘。
+
+请结合 Storage 类的分析来看。
+
+几点说明：
+
+1、 为了获取传输性能，BT把文件片断切割为多个子片断。
+
+2、 BT为获取一个子片断，需要向拥有该子片断的peer发送request消息（关于 request消息，参见《BT协议规范》）。
+
+3、 例如一个256k大小的片断，索引号是10，被划分为16个16k大小的子片断。那么需要为这16个子片断分别产生一个 request 消息。这些request消息在发出之前，以list的形式保存在 inactive_requests 这个list中。例如对这个片断，就保存在inactive_requests下标为 10（片断的索引号）的地方，值是如下的 list：[(0,16k),(16k, 16k), (32k, 16k), (48k, 16k), (64k, 16k), (80k, 16k), (96k, 16k), (112k, 16k), (128k, 16k), (144k, 16k), (160k, 16k), (176k, 16k), (192k, 16k), (208k, 16k), (224k, 16k), (240k, 16k)]。这个处理过程在 _make_inactive() 函数中。因为这些request还没有发送出去，所以叫做 inactive request（未激活的请求）。如果一个 request 发送出去了，那么叫做 active request。为每个片断已经发送出去的request个数记录在 numactive 中。如果收到一个子片断，那么 active request 个数就要减1。amount_inactive 记录了尚没有发出request的子片断总的大小。
+
+
+4、每当获得一个子片段，都要写入磁盘。如果子片断所属的片断在磁盘上还没有分配空间，那么首先需要为整个片断分配空间。如何为片断分配空间？这正是 StorageWrapper 类中最难理解的一部分代码。这个“空间分配算法”说起来很简单，但是在没有任何注释的情况下去看代码，耗费了我好几天的时间。具体的算法分析，请看 _piece_came_in() 的注释。
+
+class StorageWrapper:
+
+def __init__(self, storage, request_size, hashes,
+
+        piece_size, finished, failed,
+
+        statusfunc = dummy_status, flag = Event(), check_hashes = True,
+
+data_flunked = dummy_data_flunked):
+
+    self.storage = storage         # Storage 对象
+
+    self.request_size = request_size #子片断大小
+
+    self.hashes = hashes     # 文件片断摘要信息
+
+    self.piece_size = piece_size # 片断大小
+
+    self.data_flunked = data_flunked     # 一个函数，用来检查片断的完整性
+
+    self.total_length = storage.get_total_length()       # 文件总大小
+
+
+    self.amount_left = self.total_length     # 未下载完的文件大小
+
+        # 文件总大小的有效性检查
+
+        # 因为最后一个片断长度可能小于 piece_size
+
+    if self.total_length <= piece_size * (len(hashes) - 1):
+
+        raise ValueError, 'bad data from tracker - total too small'
+
+    if self.total_length > piece_size * len(hashes):
+
+        raise ValueError, 'bad data from tracker - total too big'
+
+    # 两个事件，分布在下载完成和下载失败的时候设置
+
+    self.finished = finished
+
+    self.failed = failed
+
+
+这几个变量的作用在前面已经介绍过了。
+
+    self.numactive = [0] * len(hashes)
+
+        inactive_request
+
+inactive_requests 的值全部被初始化为1，这表示每个片断都需要发送 request。后面在对磁盘文件检查之后，那些已经获得的片断，在 inactive_requests中对应的是 None，表示不需要再为这些片断发送 request了。
+
+    self.inactive_requests = [1] * len(hashes)
+
+    self.amount_inactive = self.total_length
+
+# 是否进入 EndGame 模式？关于 endgame 模式，在《Incentives Build Robustness in BitTorrent 》的“片断选择算法”中有介绍。后面可以看到，在为最后一个“子片断”产生请求后，进入 endgame 模式。
+
+    self.endgame = False
+
+    self.have = Bitfield(len(hashes))
+
+    # 该片是否检查了完整性
+
+    self.waschecked = [check_hashes] * len(hashes)
+
+这两个变量用于“空间分配算法”
+
+    self.places = { }
+
+    self.holes = [ ]
+
+    if len(hashes) == 0:
+
+        finished()
+
+        return
+
+    targets = {}
+
+    total = len(hashes)
+
+# 检查每一个片断，，，
+
+    for i in xrange(len(hashes)):
+
+# 如果磁盘上，还没有完全为这个片断分配空间，那么这个片断需要被下载，在 targets 字典中添加一项（如果已经存在，就不用添加了），它的关键字（key）是该片断的摘要值，它的值（value）是一个列表， 这个片断的索引号被添加到这个列表中。
+
+这里一度让我非常迷惑，因为一直以为不同的文件片断肯定具有不同的摘要值。后来才想明白了，那就是：两个不同的文件片断，可能拥有相同的摘要值。不是么？只要这两个片断的内容是一样的。
+
+
+这一点，对后面的分析非常重要。
+
+if not self._waspre(i):
+
+              targets.setdefault(hashes, []).append(i)
+
+          total -= 1
+
+    numchecked = 0.0
+
+    if total and check_hashes:
+
+        statusfunc({"activity" : 'checking existing file', "fractionDone" : 0})
+
+# 这是一个内嵌在函数中的函数。在 c++ 中，可以有内部类，不过好像没有内部函数的说法。这个函数只能在 __init__() 内部使用。
+
+这个函数在一个片段被确认获得后调用
+
+# piece: 片断的索引号
+
+# pos: 这个片断在磁盘上存储的位置
+
+例如，片断5可能存储在片断2的位置上。请参看后面的“空间分配算法”
+
+    def markgot(piece, pos, self = self, check_hashes = check_hashes):
+
+        self.places[piece] = pos
+
+        self.have[piece] = True
+
+        self.amount_left -= self._piecelen(piece)
+
+self.amount_inactive -= self._piecelen(piece)
+
+不用再为这个片断发送 request消息了
+
+        self.inactive_requests[piece] = None
+
+        self.waschecked[piece] = check_hashes
+
+    lastlen = self._piecelen(len(hashes) - 1)     # 最后一个片断的长度
+
+# 对每一个片断
+
+    for i in xrange(len(hashes)):
+
+#如果磁盘上，还没有完全为这个片断分配空间，那么在 holes 中添加该片断的索引号。
+
+if not self._waspre(i):
+
+          self.holes.append(i)
+
+# 否则，也就是空间已经分配。但是还是不能保证这个片断已经完全获得了，正如分析 Storage 时提到的那样，可能存在“空洞”
+
+# 如果不需要进行有效性检查，那么简单调用 markgot() 表示已经获得了该片断。这显然是一种不负责任的做法。
+
+        elif not check_hashes:
+
+          markgot(i, i)
+
+# 如果需要进行有效性检查
+
+else:
+
+sha是python内置的模块，它封装了 SHA-1摘要算法。SHA-1摘要算法对一段任意长的数据进行计算，得出一个160bit （也就是20个字节）长的消息摘要。在 torrent 文件中，保存了每个片断的消息摘要。接收方在收到一个文件片断之后，再计算一次消息摘要，然后跟 torrent 文件中对应的值进行比较，如果结果不一致，那么说明数据在传输过程中发生了变化，这样的数据应该被丢弃。
+
+这里，首先，根据片断i的起始位置开始，lastlen长的一段数据构造一个 sha 对象。
+
+          sh = sha(self.storage.read(piece_size * i, lastlen))
+
+计算这段数据的消息摘要
+
+          sp = sh.digest()
+
+
+BitTorrent 协议规范（BT协议集合）十五 
+(上接十四)
+然后，更新 sh 这个 sha 对象，注意，是根据片断 i 剩下的数据来更新的。关于 sha::update() 的功能，请看 python的帮助。如果有两段数据 a 和 b，那么
+
+sh = sha(a)
+
+sh.update(b)，等效于
+
+sh = sha(a+b)
+
+所以，下面这个表达式等于
+
+sh.update(self.storage.read(piece_size*i, self._piecelen(i)))
+
+          sh.update(self.storage.read(piece_size * i + lastlen, self._piecelen(i) - lastlen))
+
+所以，这次计算出来的就是片断i 的摘要
+
+（原来的困惑：为什么不直接计算 i 的摘要，要这么绕一下了？后来分析清楚“空间分配算法”之后，这后面一段代码也就没有什么问题了。）
+
+          s = sh.digest()
+
+如果计算出来的摘要和 hashes 一致（后者是从 torrent 文件中获得的），那么，这个片断有效且已经存在于磁盘上。
+
+          if s == hashes:
+
+markgot(i, i)
+
+          elif targets.get(s)
+
+and self._piecelen(i) == self._piecelen(targets[s][-1]):
+
+            markgot(targets[s].pop(), i)
+
+          elif not self.have[len(hashes) - 1]
+
+and sp == hashes[-1]
+
+and (i == len(hashes) - 1 or not self._waspre(len(hashes) - 1)):
+
+markgot(len(hashes) - 1, i)
+
+                  else:
+
+            self.places = i
+
+          if flag.isSet():
+
+            return
+
+          numchecked += 1
+
+          statusfunc({'fractionDone': 1 - float(self.amount_left) / self.total_length})
+
+# 如果所有片断都下载完了，那么结束。
+
+    if self.amount_left == 0:
+
+        finished()
+
+# 检查某个片断，是否已经在磁盘上分配了空间，调用的是 Storage:: was_preallocated()
+
+def _waspre(self, piece):
+
+    return self.storage.was_preallocated(piece * self.piece_size,
+
+self._piecelen(piece))
+
+  # 获取指定片断的长度，只有最后一个片断大小可能小于 piece_size
+
+  def _piecelen(self, piece):
+
+    if piece < len(self.hashes) - 1:
+
+        return self.piece_size
+
+    else:
+
+return self.total_length - piece * self.piece_size
+
+    # 返回剩余文件的大小
+
+  def get_amount_left(self):
+
+    return self.amount_left
+
+    # 判断是否已经获得了一些文件片断
+
+  def do_I_have_anything(self):
+
+    return self.amount_left < self.total_length
+
+    # 将指定片断切割为“子片断”
+
+def _make_inactive(self, index):
+
+    # 先获取该片断的长度
+
+    length = min(self.piece_size, self.total_length - self.piece_size * index)
+
+    l = []
+
+    x = 0
+
+# 为了获得更好的传输性能，BT把每个文件片断又分为更小的“子片断”，我们可以在 download.py 文件中 default 变量中，找到“子片断”大小的定义：
+
+'download_slice_size', 2 ** 14,     "How many bytes to query for per request."
+
+这里定义的“子片断”大小是16k。
+
+下面这个循环，就是将一个片断进一步切割为“子片断”的过程。
+
+    while x + self.request_size < length:
+
+        l.append((x, self.request_size))
+
+x += self.request_size
+
+    l.append((x, length - x))
+
+# 将 l 保存到 inactive_requests 这个列表中
+
+    self.inactive_requests[index] = l
+
+# 是否处于 endgame 模式，关于endgame模式，参加《Incentives Build Robustness in BitTorrent》
+
+  def is_endgame(self):
+
+    return self.endgame
+
+  def get_have_list(self):
+
+    return self.have.tostring()
+
+  def do_I_have(self, index):
+
+    return self.have[index]
+
+# 判断指定的片断，是否还有 request没有发出？如果有，那么返回 true，否则返回 false。
+
+  def do_I_have_requests(self, index):
+
+    return not not self.inactive_requests[index]
+
+为指定片断创建一个 request 消息，返回的是一个二元组，例如（32k, 16k），表示“子片断”的起始位置是 32k ，大小是 16k。
+
+  def new_request(self, index):
+
+    # returns (begin, length)
+
+# 如果还没有为该片断创建 request。，那么调用 _make_inactive() 创建 request列表。（inactive_requests[index] 初始化的值是1）
+
+    if self.inactive_requests[index] == 1:
+
+self._make_inactive(index)
+
+# numactive[index] 记录了已经为该片断发出了多少个 request。
+
+    self.numactive[index] += 1
+
+    rs = self.inactive_requests[index]
+
+    # 从 inactive_request 中移出最小的那个request（也就是起始位置最小）。
+
+    r = min(rs)
+
+    rs.remove(r)
+
+    # amount_inactive 记录了尚没有发出request的子片断总的大小。
+
+    self.amount_inactive -= r[1]
+
+    # 如果这是最后一个“子片断”，那么进入 endgame 模式
+
+    if self.amount_inactive == 0:
+
+self.endgame = T.rue
+
+    # 返回这个 request
+
+    return r
+
+  def piece_came_in(self, index, begin, piece):
+
+    try:
+
+        return self._piece_came_in(index, begin, piece)
+
+    except IOError, e:
+
+        self.failed('IO Error ' + str(e))
+
+        return True
+
+如果获得了某个“子片断”，那么调用这个函数。
+
+index：“子片断”所在片断的索引号，
+
+begin：“子片断”在片断中的起始位置，
+
+piece：实际数据
+
+def _piece_came_in(self, index, begin, piece):
+
+# 如果之前没有获得过该片断中任何“子片断”，那么首先需要在磁盘上为整个片断分配空间。
+
+空间分配的算法如下：
+
+假设一共是6个片断，现在已经为 0、1、4三个片断分配了空间，那么
+
+holes：[2, 3, 5]
+
+places：{0:0, 1:1, 4:4}
+
+现在要为片断5分配空间，思路是把片断5的空间暂时先分配在片断2应该在的空间上。这样分配以后，
+
+holes：[3, 5]
+
+places: {0:0, 1:1, 4:4, 5:2}
+
+假设下一步为片断2分配空间，因为2的空间已经被5占用，所以把5的数据转移到3上，2才可以使用自己的空间。这样分配之后，
+
+holes：[5]
+
+places：{0:0, 1:1, 2:2, 4:4, 5:3}
+
+最后，为3分配空间，因为3的空间被5占用，所以把5的数据转移到5自己的空间上，3就可以使用自己的空间了。这样分配之后，
+
+holes：[]
+
+places：{0:0, 1:1, 2:2, 3:3, 4:4, 5:5}
+
+下面这段比较晦涩的代码，实现的就是这种空间分配算法。
+
+    if not self.places.has_key(index):
+
+n = self.holes.pop(0)
+
+        if self.places.has_key(n):
+
+          oldpos = self.places[n]
+
+          old = self.storage.read(self.piece_size * oldpos, self._piecelen(n))
+
+          if self.have[n] and sha(old).digest() != self.hashes[n]:
+
+            self.failed('data corrupted on disk - maybe you have two copies running?')
+
+            return True
+
+          self.storage.write(self.piece_size * n, old)
+
+          self.places[n] = n
+
+          if index == oldpos or index in self.holes:
+
+            self.places[index] = oldpos
+
+          else:
+
+            for p, v in self.places.items():
+
+                if v == index:
+
+                  break
+
+            self.places[index] = index
+
+            self.places[p] = oldpos
+
+            old = self.storage.read(self.piece_size * index, self.piece_size)
+
+self.storage.write(self.piece_size * oldpos, old)
+
+elif index in self.holes or index == n:
+
+          if not self._waspre(n):
+
+self.storage.write(self.piece_size * n,
+
+self._piecelen(n) * chr(0xFF))
+
+          self.places[index] = n
+
+        else:
+
+          for p, v in self.places.items():
+
+            if v == index:
+
+                break
+
+          self.places[index] = index
+
+          self.places[p] = n
+
+          old = self.storage.read(self.piece_size * index, self._piecelen(n))
+
+          self.storage.write(self.piece_size * n, old)
+
+    # 调用 Stoarge::write() 将这个子片断写入磁盘，注意是写到 places[index] 所在的空间上。
+
+self.storage.write(self.places[index] * self.piece_size + begin, piece)
+
+# 既然获得了一个子片断，那么发出的request个数显然要减少一个。
+
+    self.numactive[index] -= 1
+
+# 如果既没有尚未发出的 request，而且也没有已发出的request（每当获得一个子片断，numactive[index]减少1，numactive[index]为 0，说明所有发出的 request都已经接收到了响应的数据），那么显然整个片断已经全部获得了。
+
+if not self.inactive_requests[index] and not self.numactive[index]:
+
+    检查整个片断的有效性，如果通过检查
+
+if sha(self.storage.read(self.piece_size * self.places[index],
+
+self._piecelen(index))).digest() == self.hashes[index]:
+
+#“我”已经拥有了这个片断
+
+          self.have[index] = True
+
+          self.inactive_requests[index] = None
+
+              # 也检查过了有效性
+
+          self.waschecked[index] = True
+
+          self.amount_left -= self._piecelen(index)
+
+          if self.amount_left == 0:
+
+self.finished()
+
+        如果没有通过有效性检查
+
+        else:
+
+          self.data_flunked(self._piecelen(index))
+
+              得丢弃这个片断
+
+          self.inactive_requests[index] = 1
+
+          self.amount_inactive += self._piecelen(index)
+
+          return False
+
+    return True
+
+# 如果向某个 peer 发送的获取“子片断”的请求丢失了，那么调用此函数
+
+  def request_lost(self, index, begin, length):
+
+    self.inactive_requests[index].append((begin, length))
+
+    self.amount_inactive += length
+
+    self.numactive[index] -= 1
+
+  def get_piece(self, index, begin, length):
+
+    try:
+
+        return self._get_piece(index, begin, length)
+
+    except IOError, e:
+
+        self.failed('IO Error ' + str(e))
+
+        return None
+
+  def _get_piece(self, index, begin, length):
+
+    if not self.have[index]:
+
+        return None
+
+    if not self.waschecked[index]:
+
+        # 检查片断的 hash值，如果错误，返回 None
+
+if sha(self.storage.read(self.piece_size * self.places[index],
+
+self._piecelen(index))).digest() != self.hashes[index]:
+
+          self.failed('told file complete on start-up, but piece failed hash check')
+
+          return None
+
+        # 通过 hash 检查
+
+self.waschecked[index] = True
+
+    # 检查一下“子片断”长度是否越界
+
+    if begin + length > self._piecelen(index):
+
+return None
+
+# 调用 Storage::read() ，将该“子片断”数据从磁盘上读出来，返回值就是这段数据。
+
+    return self.storage.read(self.piece_size * self.places[index] + begin, length)
+
+BitTorrent 协议规范（BT协议集合）十六
+PiecePicker 用于实现“片断选择算法”，片断选择算法在《Incentives Build Robustness in BitTorrent》一文中有介绍，我把相关内容列出来。
+
+BT的片断选择算法，综合下面几种策略。
+
+l       严格的优先级
+
+  片断选择的第一个策略是：一旦请求了某个片断的子片断，那么该片断剩下的子片断优先被请求。这样，可以尽可能快的获得一个完整的片断
+
+l       最少的优先
+
+  每个peer都优先选择整个系统中最少的那些片断去下载，而那些在系统中相对较多的片断，放在后面下载，这样，整个系统就趋向于一种更优的状态。如果不用这种算法，大家都去下载最多的那些片断，那么这些片断就会在系统中分布的越来越多，而那些在系统中相对较少的片断仍然很少，最后，某些 peer 就不再拥有其它 peer 感兴趣的片断了，那么系统的参与者越来越少，整个系统的性能就下降。
+
+l       随机的第一个片断
+
+  “最少优先”的一个例外是在下载刚开始的时候。此时，下载者没有任何片断可供上传，所以，需要尽快的获取一个完整的片断。而最少的片断，通常只有某一个 peer拥有，所以，它可能比多个peers都拥有的那些片断下载的要慢。因此，第一个片断是随机选择的，直到第一个片断下载完成，才切换到“最少优先” 的策略。
+
+l       最后阶段模式
+
+  有时候，从一个速率很慢的peer那里请求一个片断。在下载的中间阶段，这不是什么问题，但是却可能潜在的延迟下载的完成。为了防止这种情况，在最后阶段，peer向它的所有的peers们都发送某片断的子片断的请求，一旦某些子片断到了，那么就会向其它peer发送cancel 消息，取消对这些子片断的请求，以避免带宽的浪费。实际上，用这种方法并没有浪费多少带宽，而文件的结束部分也一直下载的非常快。
+
+下面是我在分析之前思考的两个问题：
+
+问题1：如何实现“严格优先级”
+
+答案：记录每个已经开始下载的片断。优先选择它们。
+
+问题2：如何实现“最少优先”算法？也就是你如何去统计某个片断在系统中最少？
+
+答案：通过 have 消息（have消息请参看BT对等协议）来计算。在下载过程中，会不停的收到其它 peer 发来的 have 消息，每个have消息都表明对方拥有了某个片断。那么，为每个片断维护一个计数器，每收到一个have消息，相应的计数器加1。在选择片断的时候，计数器最小的某个片断被选中。
+
+在实际代码中，可以看到，变量started和seedstarted 是用来实现“严格优先级”的，它们记录了那些已经开始下载的片断。而变量 numinterests用来实现“最少优先”算法。
+
+PiecePicker类的核心函数是 next() ，它综合多种策略，来计算出下一个应该被选择进行下载的片断。
+
+PiecePicker 类的难点是三个变量 numinterests、interests、pos_in_interests的作用。因为没有任何注释，我思考了很久才明白它们的作用，特别是 pos_in_interests。所以，在分析代码之前，我结合例子来讲解这三个变量的作用。
+
+假设有三个片断：
+
+numinterests：
+
+类型是list，每个片断对应一项，记录了每个片断收到的 have 消息的个数。初始化的时候，numinterests = [0, 0, 0]。
+
+interests：
+
+类型是 list，它的每一项又是一个 list。例如在这个例子中，初始化的时候，interests = [ [0, 1, 2] ]，显然，它只有一项。
+
+interests 的作用是什么了？嗯，有点难以表达。大概是这样的吧：所有未完成下载的片断的索引号都保存在 interests，进行片断选择的时候，要用到 interests。我们看两个例子：
+
+1、interests = [ [0, 1], [2]]
+
+2、interests = [ [1], [0, 2]]
+
+在第一个例子中，片断0、1位于 interests 的第0项，片断2位于 interests的第1项。
+
+在第二个例子中，片断1位于位于 interests 的第0项，片断0、2位于 interests的第1项。
+
+无论哪种情况，都表明0、1、2三个片断都还没有下载完成。
+
+那么，某个片断到底应该处于 interests 中什么位置了？答案是根据该片断收到的 have 消息个数，也就是 numinterests 的值。例如，第一个例子中，说明片断0、1收到的 have 个数都是0，所以处于 interests的第0项，而片断2收到的 have 个数是1，所以处于第1项。而初始化的时候，interests =[ [0, 1, 2]]，说明片断0、1、2收到的 have个数都是0。
+
+奇怪，为什么要这样设计了？答案就是“最少优先”的片断选择策略。我们看到，拥有越多 have 的片断，在 interests 中，位置越靠后。在进行片断选择的时候，可能会从 interests中选一个片断出来（为什么说可能了，一会可以看到，会优先采用其它策略，如果其它策略不能选一个出来，才会试图从 interests 中选）。这样，按照索引从小到大的顺序，拥有 have 越少的片断，越可能被选到。我们考虑这样一个例子：
+
+interests = [[2, 3], [5, 0, 1], [], [], [4]]
+
+片断2、3拥有0个 have，不能被选择。（至少要有一个 have 才被考虑）。
+
+片断0、1、5都有1个have，所以会优先从它们中选择一个。
+
+片断4拥有4个 have，所以最后被考虑。
+
+pos_in_interests：
+
+如上所述，拥有相同 have 个数的片断，处于 interests 中的同一位置。例如上面这个例子，0、1、5都处于第1个位置。那么它们又根据什么原则进行先后排列了？答案是随机排列。所以，既可能是0、1、5，也可能是 1、5、0，或者其它。为了记录某个片断的确切位置，就需要用到 pos_in_interests了。它也是一个 list，每个片断拥有一项，根据上面这个例子，应该是：
+pos_in_interests = [1, 2, 0, 1, 0, 0]
+
+看出什么来没？呵呵
+
+它的意思是，
+
+片断0是 [5, 0, 1] 的第1个
+
+片断1是 [5, 0, 1] 的第2个
+
+片断2是 [2, 3] 的第0个
+
+片断3是 [2, 3] 的第1个
+
+片断4是 [4] 的第0个
+
+片断5是 [5, 0, 1] 的第0个
+
+就是这样喽，不知道我有没有说清楚。
+
+# 封装“片断选择算法”
+
+class PiecePicker:
+
+  def __init__(self, numpieces, rarest_first_cutoff = 1):
+
+    self.rarest_first_cutoff = rarest_first_cutoff
+
+    self.numpieces = numpieces # 片断的个数
+
+    self.interests = [range(numpieces)]
+
+    self.pos_in_interests = range(numpieces)
+
+    self.numinterests = [0] * numpieces
+
+    self.started = []
+
+    self.seedstarted = []
+
+    self.numgot = 0 # 获得了几个片断？
+
+    self.scrambled = range(numpieces)
+
+    shuffle(self.scrambled)
+
+    收到一个 have 消息的处理
+
+  def got_have(self, piece):
+
+    if self.numinterests[piece] is None:
+
+return
+
+        numint = self.numinterests[piece]
+
+    if numint == len(self.interests) - 1:
+
+self.interests.append([])
+
+        numinterests 对应的值要加1。
+
+    self.numinterests[piece] += 1
+
+        调整 interests 和 pos_in_interests
+
+    self._shift_over(piece, self.interests[numint], self.interests[numint + 1])
+
+    丢失一个 have 消息？？？？？
+
+  def lost_have(self, piece):
+
+    if self.numinterests[piece] is None:
+
+        return
+
+    numint = self.numinterests[piece]
+
+    self.numinterests[piece] -= 1
+
+    self._shift_over(piece, self.interests[numint], self.interests[numint - 1])
+
+    调整 interests 和 pos_in_interests，前面已经分析过。
+
+  def _shift_over(self, piece, l1, l2):
+
+    p = self.pos_in_interests[piece]
+
+    l1[p] = l1[-1]
+
+    self.pos_in_interests[l1[-1]] = p
+
+    del l1[-1]
+
+    newp = randrange(len(l2) + 1)
+
+    if newp == len(l2):
+
+        self.pos_in_interests[piece] = len(l2)
+        l2.append(piece)
+
+    else:
+
+        old = l2[newp]
+
+        self.pos_in_interests[old] = len(l2)
+
+        l2.append(old)
+
+        l2[newp] = piece
+
+        self.pos_in_interests[piece] = newp
+
+    为某个片断发送过 requested 消息，用于“严格优先级”策略
+
+  def requested(self, piece, seed = False):
+
+    if piece not in self.started:
+
+              把片断索引号添加到 started中
+
+        self.started.append(piece)
+
+    if seed and piece not in self.seedstarted:
+
+        self.seedstarted.append(piece)
+
+  # 如果某个片断已经得到，那么调用这个函数
+
+  def complete(self, piece):
+
+    assert self.numinterests[piece] is not None
+
+    self.numgot += 1
+
+    l = self.interests[self.numinterests[piece]]
+
+    p = self.pos_in_interests[piece]
+
+    l[p] = l[-1]
+
+    self.pos_in_interests[l[-1]] = p
+
+    del l[-1]
+
+    self.numinterests[piece] = None
+
+    try:
+
+        self.started.remove(piece)
+
+        self.seedstarted.remove(piece)
+
+    except ValueError:
+
+        pass
+
+    计算下一个被选择的片断
+
+  def next(self, havefunc, seed = False):
+
+    bests = None
+
+    bestnum = 2 ** 30
+
+        首先根据“严格优先级”策略，从已经开始下载的片断中选择。
+
+    if seed:
+
+        s = self.seedstarted
+
+    else:
+
+s = self.started
+
+“严格优先级”策略是和“最少优先”策略结合起来使用的。也就是说，在满足“严格优先”的片断中，再去选择一个满足“最少优先”的片断。注意， “最少优先”还有一个限制，就是如果一个片断如果从来没有收到过 have 消息（也就是计数是0），也不能被选择。这个判断由下面的 havefunc(i) 完成。
+
+        for i in s:
+
+        if havefunc(i):
+          if self.numinterests < bestnum:
+
+            bests =
+
+            bestnum = self.numinterests
+
+          elif self.numinterests == bestnum:
+
+bests.append(i)
+
+经过“严格优先级”和“最少优先”策略之后，可能返回多个候选片断，从中随机选择一个，返回。
+
+    if bests:
+
+              从 bests 随机返回一个值
+
+return choice(bests)
+
+
+如果以上步骤，没有选择出一个片断。那么随机选择一个。这大概就是“随机的第一个片断”的策略吧。因为 rarest_first_cutoff 默认是设置为1的。也就是说，在一个片断都没有获得的情况下，才会选择这种策略。如果 rarest_first_cutoff 设置为10，那么这个策略就可以叫做“随机的前10个片断”，呵呵。
+
+    if self.numgot < self.rarest_first_cutoff:
+
+        for i in self.scrambled:
+
+          if havefunc(i):
+
+            return i
+
+return None
+
+如果不能采用“随机的第一个片断”测率，那么， interests 终于派上用场了。到这里，终于明白 interests 为什么要用 numinterests 对应的值来进行定位了。还是“最少优先”的思想，因为那些收到 have 消息少的片断，在interests 中位置比较靠前，所以会优先被选择到。
+
+    for i in xrange(1, min(bestnum, len(self.interests))):
+
+        for j in self.interests:
+
+          if havefunc(j):
+
+return j
+
+        如果还选不出来，只好返回 None了。
+
+    return None
+
+  def am_I_complete(self):
+
+    return self.numgot == self.numpieces
+
+谁来补充？
+
+  def bump(self, piece):
+
+    l = self.interests[self.numinterests[piece]]
+
+    pos = self.pos_in_interests[piece]
+
+    del l[pos]
+
+    l.append(piece)
+
+    for i in range(pos,len(l)):
+
+self.pos_in_interests[l] = i
+
+BitTorrent 协议规范（BT协议集合）十七
+Encoder 是一种 Handler 类（关于 Handler类，请参看前面的分析文章）。它在 download.py 中被初始化。它与 Connection类一起，完成“BT对等连接”的建立，以及“BT对等协议”的分析。
+为了有助于理解，我添加了一些用圆圈括起来的序号，建议你按照这个顺序去阅读。
+
+class Connection:
+  ②def __init__(self, Encoder, connection, id, is_local):
+    self.encoder = Encoder
+    self.connection = connection
+如果是本地发起连接，那么 id 是对方的 id，否则 id 为 None
+    self.id = id
+如果连接是由本地发起的，那么 is_local 为 True，否则为 False
+    self.locally_initiated = is_local
+    self.complete = False
+    self.closed = False
+    self.buffer = StringIO()
+    self.next_len = 1
+    self.next_func = self.read_header_len
+如果连接是由本地主动发起建立的，那么需要向对方发送一个握手消息。（如果不是由本地主动发起的，那么就是被动建立的，那么不能在这里发送握手消息，而必须在分析完对方的握手消息之后，再去回应一个握手西消息，请看read_download_id() 中的处理。
+    if self.locally_initiated:
+        connection.write(chr(len(protocol_name)) + protocol_name +
+          (chr(0) * 8) + self.encoder.download_id)
+        if self.id is not None:
+          connection.write(self.encoder.my_id)
+
+  def get_ip(self):
+    return self.connection.get_ip()
+
+  def get_id(self):
+    return self.id
+
+  def is_locally_initiated(self):
+    return self.locally_initiated
+
+  def is_flushed(self):
+    return self.connection.is_flushed()
+
+  ⑦def read_header_len(self, s):
+    if ord(s) != len(protocol_name):
+        return None
+    return len(protocol_name), self.read_header
+
+  def read_header(self, s):
+    if s != protocol_name:
+        return None
+    return 8, self.read_reserved
+
+  def read_reserved(self, s):
+    return 20, self.read_download_id
+  def read_download_id(self, s):
+    if s != self.encoder.download_id:
+        return None
+这一步很重要， 如果连接是由对方发起的，那么，给对方发送一个握手消息。为什么不在读完了 peer id 之后才发送这个消息了？这是因为 peer id 是可选的，所以只要分析完 download id 之后，就要立即发送握手消息。
+    if not self.locally_initiated:
+self.connection.write(chr(len(protocol_name)) +
+protocol_name +
+(chr(0) * 8) +
+self.encoder.download_id + self.encoder.my_id)
+    return 20, self.read_peer_id
+
+  def read_peer_id(self, s):
+    if not self.id:
+        如果 peer id 是自己，那么出错了
+        if s == self.encoder.my_id:
+          return None
+        for v in self.encoder.connections.values():
+          如果已经跟该 peer 建立了连接了，那么也出错了
+          if s and v.id == s:
+            return None
+        self.id = s
+        if self.locally_initiated:
+          self.connection.write(self.encoder.my_id)
+        else:
+          self.encoder.everinc = True
+    else:
+        如果 peer id 和 xxx 不符，那么出错了。
+        if s != self.id:
+          return None
+
+“BT对等连接”的握手过程正式宣告完成，此后，双方就可以通过这个连接互相发送消息了。
+    self.complete = True
+
+调用Connecter::connection_made()，这个函数的意义，我们到分析 Connecter 类的时候，再记得分析。
+    self.encoder.connecter.connection_made(self)
+
+下面进入 BT 消息的处理过程。
+    return 4, self.read_len
+
+  def read_len(self, s):
+    l = toint(s)
+    if l > self.encoder.max_len:
+        return None
+    return l, self.read_message
+
+消息处理，交给了 Connecter::got_message()，所以下一篇我们要分析 Connecter 类。
+  def read_message(self, s):
+    if s != '':
+        self.encoder.connecter.got_message(self, s)
+    return 4, self.read_len
+
+  def read_dead(self, s):
+    return None
+
+  def close(self):
+    if not self.closed:
+        self.connection.close()
+        self.sever()
+
+  def sever(self):
+    self.closed = True
+    del self.encoder.connections[self.connection]
+    if self.complete:
+        self.encoder.connecter.connection_lost(self)
+
+  def send_message(self, message):
+    self.connection.write(tobinary(len(message)) + message)
+
+
+⑤在 Encoder::data_came_in() 中调用下面这个函数，表示某个连接上有数据可读。如果有数据可读，那么我们就按照 BT 对等协议的规范来进行分析。。。
+def data_came_in(self, s):
+
+进入协议分析循环。。。
+    while True:
+        if self.closed:
+          return
+
+self.next_len表示按照BT对等协议规范，下一段要分析的数据的长度
+self.buffer.tell() 表示缓冲区中剩下数据的长度
+那么 i 就表示：为了完成接下来的协议分析，还需要多少数据？
+i = self.next_len - self.buffer.tell()
+如果 i 大于所读到的数据的长度，那表示数据还没有读够，无法继续协议分析，需要等读到足够多的数据才能继续，所以只能退出。
+        if i > len(s):
+          self.buffer.write(s)
+          return
+否则表示这次读到的数据已经足够完成一步协议分析。
+只取满足这一步协议分析的数据放入 buffer 中（因为 buffer中可能还有上一步协议分析后留下的一些数据，要加在一起），剩下的数据保留在 s 中。
+        self.buffer.write(s[:i])
+s = s[i:]
+
+从 buffer 中取出数据，这些数据就是这一步协议分析所需要的数据。然后把 buffer 清空。
+        m = self.buffer.getvalue()
+        self.buffer.reset()
+self.buffer.truncate()
+
+next_func 就是用于这一步协议分析的函数。
+返回的 x 是一个二元组，包含了下一步协议分析的数据长度和协议分析函数。这样，就形成了一个协议分析循环。
+        try:
+          x = self.next_func(m)
+        except:
+          self.next_len, self.next_func = 1, self.read_dead
+          raise
+        if x is None:
+          self.close()
+          return
+从 x 中分解出 next_len和 next_func。
+self.next_len, self.next_func = x
+⑥那么BT对等协议分析的第一步是什么了？
+请看初始化函数：
+self.next_len = 1
+self.next_func = self.read_header_len
+显然，第一步协议分析是由 read_header_len() 来完成的。
+在BT源码中，有多处采用了这种协议分析的处理方式。
+
+class Encoder:
+  def __init__(self, connecter, raw_server, my_id, max_len,
+        schedulefunc, keepalive_delay, download_id,
+        max_initiate = 40):
+    self.raw_server = raw_server
+    self.connecter = connecter
+    self.my_id = my_id
+    self.max_len = max_len
+    self.schedulefunc = schedulefunc
+    self.keepalive_delay = keepalive_delay
+    self.download_id = download_id
+    最大发起的连接数
+    self.max_initiate = max_initiate
+    self.everinc = False
+   
+    self.connections = {}
+    self.spares = []
+   
+    schedulefunc(self.send_keepalives, keepalive_delay)
+
+为了保持连接不因为超时而被关闭，所以可能需要随机的发送一些空消息，它的目的纯粹是为了保证连接的“活力”
+  def send_keepalives(self):
+    self.schedulefunc(self.send_keepalives, self.keepalive_delay)
+    for c in self.connections.values():
+        if c.complete:
+          c.send_message('')
+
+③主动向对方发起一个连接，这个函数什么时候调用？
+请看 download.py 中 Rerequester 类的初始化函数，其中传递的一个参数是 encoder.start_connection。
+再看 Rerequester.py 中，Rerequester::postrequest() 的最后，
+for x in peers:
+self.connect((x[0], x[1]), x[2])
+这里调用的 connect() 就是初始化的时候传递进来的 encoder.start_connection，也就是下面这个函数了。
+也就是说，当客户端从 tracker 服务器那里获取了 peers 列表之后，就逐一向这些 peers 主动发起连接。
+  def start_connection(self, dns, id):
+    if id:
+        跟自己不用建立连接。
+        if id == self.my_id:
+          return
+        如果已经与对方建立起连接，也不再建立连接
+        for v in self.connections.values():
+          if v.id == id:
+            return
+
+    如果当前连接数，已经超过设定的“最大发起连接数”，那么就暂时不建立连接。
+
+    if len(self.connections) >= self.max_initiate:
+如果空闲连接数还小于 “最大发起连接数”，那么把对方的 ip 先放到spares中，等以后网络稍微空闲一点的时候，再从 spares 中取出来，实际去建立连接。
+        if len(self.spares) < self.max_initiate and dns not in self.spares:
+          self.spares.append(dns)
+        return
+    try:
+调用 RawServer::start_connection 与对方建立TCP连接
+        c = self.raw_server.start_connection(dns)
+       
+创建 Connection 对象，加入到 connections 字典中，注意，最后一个参数是 True，表示是这个连接是由本地主动发起的。这样，在 Connection 的初始化函数中，会与对方进行 BT 对等协议的握手。
+
+        self.connections[c] = Connection(self, c, id, True)
+    except socketerror:
+        pass
+ 
+这个内部函数好像没有用到
+  def _start_connection(self, dns, id):
+    def foo(self=self, dns=dns, id=id):
+        self.start_connection(dns, id)
+   
+    self.schedulefunc(foo, 0)
+   
+  def got_id(self, connection):
+    for v in self.connections.values():
+        if connection is not v and connection.id == v.id:
+          connection.close()
+          return
+    self.connecter.connection_made(connection)
+
+  def ever_got_incoming(self):
+    return self.everinc
+
+①在 RawServer 中，当从外部发起的一个TCP成功建立后，调用此函数。
+这里传递进来的参数 connection 是 SingleSocket 类型
+def external_connection_made(self, connection):
+创建一个 Connection 对象，加入到 connections 字典中。
+    self.connections[connection] = Connection(self, connection, None, False)
+
+  def connection_flushed(self, connection):
+    c = self.connections[connection]
+    if c.complete:
+        self.connecter.connection_flushed(c)
+
+关闭连接的时候调用此函数
+  def connection_lost(self, connection):
+    self.connections[connection].sever()
+关闭一个连接之后，连接数量可能就没有达到“最大连接数”，所以如果 spares 中有一些等待建立的 ip ，现在可以取出来，主动向对方发起连接。
+    while len(self.connections) < self.max_initiate and self.spares:
+        self.start_connection(self.spares.pop(), None)
+
+④某个连接上（无论该连接上主动建立还是被动建立的）有数据可读的时候，调用此函数。在 RawServer 中被调用。转而去调 Connection::data_came_in()。
+  def data_came_in(self, connection, data):
+    self.connections[connection].data_came_in(data)
+
+BitTorrent 协议规范（BT协议集合）十八 
+客户端源码分析之六：客户端的主程序
+作者：小马哥
+
+前言：
+自从7月份写完“客户端源码分析之五：Encoder 与 Connection 类”后，我就停止了继续对BT源码的分析。原因很多，最主要的还是懒惰吧。临到岁末，终于下定决心，无论如何，要完成这一系列的文章，对自己也算有个交待。
+前面的几篇文章，都是深入到源码的某一部分细节之中，虽然很清晰，但无助于读者对整体构架的把握（其实我自己当时也比较糊涂）。这一次重新开始读源码，重点顺着几条线索往下读，感觉原来杂乱无序的代码突然变得清晰明了起来，呵呵，其实不是代码杂乱，只是我原来的阅读思路比较混乱的缘故。
+读者可以抛开前面几篇文章，从这一篇开始往下读，希望能有所收获。
+源码分析类的文章，比较难写，小马哥毕竟没有候捷的春秋笔法（甚至连作文都写不好），能把一个深奥复杂的STL源码分析的如此透彻，所以只好尝试一些傻办法，这些傻办法包括：
+1、在源码上直接加注释。但我只对重点的部分增加一些注释，细节的东西就不再深究，这样有助于写作的进度。
+2、用①、②、③这样的序号来指引代码的阅读线索
+3、用不同颜色标注出代码中值得注意的地方。
+你有什么好的建议，欢迎提出来。
+好，我们进入正题。
+
+lBT客户端的 main() 函数：
+C和c++的可执行程序，通常都有一个 main() 函数，一切从这里开始。而 python 这种解释性语言，并没有 main() 函数的概念。你传递给解释器一个 .py 扩展名的python源码文件，解释器就会顺序去解释执行这个文件中的代码。所以，BT客户端的执行，是从最先被 python 解释器解释执行的那个文件开始的。这个文件应该是 btdownloadheadless.py，至于谁又来通知让 python 解释器执行这个文件的，我们以后再讨论。
+
+l【btdownloadheadless.py】（在BT源码的根目录下）
+②def run(params):
+try:
+import curses
+curses.initscr()
+cols = curses.COLS
+# endwin() De-initialize the library, and return terminal to normal status
+curses.endwin()
+except:
+cols = 80
+h = HeadlessDisplayer()
+# 调用 download.py 中的 download 函数，我们的重点将转移到 download.py 文件，注意，该文件及以后要分析的代码都在 BT源码的 BitTorrent 子目录下。
+③ download(params, h.chooseFile, h.display, h.finished, h.error, Event(), cols, h.newpath)
+if not h.done:
+h.failed()
+
+# 所有的 python的入门书籍中，都会告诉你下面这段代码的含义。这就是最先被解释执行的代码所在。
+
+①if __name__ == '__main__':
+run(argv[1:])
+
+l【download.py】
+这个文件中，最主要的就是 download() 函数，客户端所有的一切都是从这里开始。这个函数代码比较多，我必须挑出其中最重要的代码，其它的部分，后续再分析。
+
+④rawserver = RawServer(doneflag, config['timeout_check_interval'], config['timeout'], errorfunc = errorfunc, maxconnects = config['max_allow_in'])
+
+# 选择一个可用的端口作为监听端口
+for listen_port in xrange(config['minport'], config['maxport'] + 1):
+try:
+rawserver.bind(listen_port, config['bind'])
+break
+except socketerror, e:
+pass
+else:
+errorfunc("Couldn't listen - " + str(e))
+return
+
+encoder = Encoder(connecter, rawserver, myid, config['max_message_length'], rawserver.add_task, config['keepalive_interval'], infohash, config['max_initiate'])
+
+rawserver.listen_forever(encoder)
+
+客户端的核心类就是 RawServer，这个类我在“服务器端源码分析”（可在论坛中找到）文章中分析过它的作用，这里不再赘述。通过调用它的 listen_forever() 函数，BT 客户端就进入了一个循环之中。此后，所有的下载、上传、文件存储以及其它工作都在这一次次的循环之中完成。
+注意到，在进入循环之前，调用了 RawServer::bind() 函数，BT客户端会选择一个可用的端口，然后通过监听这个端口，从而可以接受其它 peer 的连接请求（也就是BT对等连接）。这个端口可以称为“监听端口”。如果你有网络服务器的编程经验，从它的循环处理逻辑、监听端口的处理可以知道，这显然就是一个典型的网络服务器的表现。所以，我在以前的文章中曾经说过，BT客户端同时也是一个服务器。
+一旦在监听端口上有某个peer发来连接请求，BT客户端会创建一个新的端口，这个端口用来与请求者建立连接；有几个peer请求连接，就会创建几个端口。我们可以说这是一些“被动端口”。在循环的处理过程中，BT客户端还会根据情况，向其它 peer主动发出连接请求，每个连接也需要一个端口，这些端口可以称为“主动端口”。其实，这些都是网络编程中最基本的概念，不清楚的朋友还是首先要去看看这方面的书籍。
+这样，就有了一个“监听端口”，几个“被动端口”和几个“主动端口”，BT客户端通过 select() 函数来监视这些端口，一旦“监听端口”或者“被动端口”上有数据到来，或者有数据需要从“主动端口”上发送出去，那么select() 都可以及时感知并进行处理（其实是一个轮询的过程），这就称为“I/O多路复用”。如果“被动端口”上有数据到来，那么这是BT对等连接的协议数据，需要按照BT对等协议进行分析，并根据分析结果进行相应处理，这个分析处理的工作就是由 Encoder 类来完成的。所以在 listen_forever() 函数中传递的参数就是一个 Encoder 类对象。关于对 Encoder 类的分析，以后分析到BT对等协议的处理的时候再说。
+
+l小结：
+通过这篇文章，我们了解了BT客户端是从哪里执行的，相应的源码在哪里。同时我们知道了BT客户端是以一个服务器循环的形式运行的，它需要监听一个端口，用于接受其它peers的连接请求；在循环过程中，它通过 select 来实现“I/O多路复用”；并由 Encoder 类来完成BT对等协议的分析处理。
+
+BitTorrent 协议规范（BT协议集合）十九
+客户端源码分析之七：客户端与tracker通信过程4VM
+作者：小马哥
+
+l概要
+上一节我们分析了BT客户端主程序的框架：一个循环的服务器程序。在这个循环过程中，客户端要完成如下任务：l
+Ø与 tracker 服务器通信；汇报自己的状态，同时获取其它 peers 的信息；.
+Ø接受其它 peers 的连接请求；a%dv
+Ø主动向某些 peers 发起连接请求；8
+Ø对BT对等协议的分析处理；kn
+Ø启用片断选择算法，通过这些主动或被动的连接去下载所需要的片断；q
+Ø为其它 peers 提供片断上传；启用阻塞算法，阻塞某些 peers 的上传请求；:[4).
+Ø将下载的片断写入磁盘；l@
+Ø其它任务；f
+
+这一节我们分析BT客户端与 tracker 服务器的通信过程。在整个下载过程中，客户端必须不断的与 tracker 通信，报告自己的状态，同时也从 tracker 那里获取当前参与下载的其它 peers 的信息（ip地址、端口等）。一旦不能与 tracker 通信，则下载过程无法继续下去。
+客户端与 tracker 之间采用 HTTP 协议通信，客户端把状态信息放在 HTTP协议的GET命令的参数中传递给 tracker，tracker 则把 peers列表等信息放在 中传递给客户端。这种设计非常简捷巧妙。采用HTTP协议也更使得穿越防火墙的阻拦更容易（不过实际应用中，tracker通常不会使用 80 端口）。
+请务必参考服务器端源码分析的几篇相关文章（论坛中有）。
+
+Rerequester 类全权负责与 tracker 的通信任务，我们首先看客户端主程序 download.py中相应的代码：
+
+l【download.py】+
+①rerequest = Rerequester(response['announce'], config['rerequest_interval'], rawserver.add_task, connecter.how_many_connections, config['min_peers'], encoder.start_connection, rawserver.add_task, storagewrapper.get_amount_left, upmeasure.get_total, downmeasure.get_total, listen_port, config['ip'], myid, infohash, config['http_timeout'], errorfunc, config['max_initiate'], doneflag, upmeasure.get_rate, downmeasure.get_rate,Q>~J0`
+encoder.ever_got_incomingw8
+②rerequest.begin()'&as-
+
+Rerequester类的构造函数中传递了一大堆参数，重点是 rawserver.add_task和 encoder.start_connection（rawserver和encoder 这两个对象，在上一节中，我们已经看到了它们的构造过程），分别对应RawServer::add_task() 和 Encoder::start_connection()，稍后会看到它们的作用。!z
+一切从 Rerequest::begin() 开始。
+
+l【rerequester.py】
+
+class Rerequester:s*
+# 这个构造函数传递了一大堆参数，现在没必要搞的那么清楚，关键是 sched 和 connect 这两个参数，对照前面的代码，很容易知道它们是什么。
+def __init__(self, url, interval, sched, howmany, minpeers, connect, externalsched, amount_left, up, down,
+port, ip, myid, infohash, timeout, errorfunc, maxpeers, doneflag,
+upratefunc, downratefunc, ever_got_incoming):
+self.url = ('%s?info_hash=%s&peer_id=%s&port=%s&key=%s' %|$
+(url, quote(infohash), quote(myid), str(port),
+b2a_hex(''.join([chr(randrange(256)) for i in xrange(4)]))))
+if ip != '':
+self.url += '&ip=' + quote(ip)
+self.interval = interval
+self.last = None
+self.trackerid = None
+self.announce_interval = 30 * 60c7
+self.sched = sched # －》RawServer::add_task()
+self.howmany = howmany # 当前有多少个连接 peer
+self.minpeers = minpeerss
+self.connect = connect #－》 Encoder::start_connection()]
+self.externalsched = externalsched+
+self.amount_left = amount_leftB1
+self.up = uppX
+self.down = downp[
+self.timeout = timeout!Z *
+self.errorfunc = errorfuncxig
+self.maxpeers = maxpeers(}U
+self.doneflag = doneflagI
+self.upratefunc = upratefuncks`%-I
+self.downratefunc = downratefuncXH
+self.ever_got_incoming = ever_got_incoming+L
+self.last_failed = TrueomdD!;
+self.last_time = 0(
+
+④def c(self):/>T.G
+# 再调用一次 add_task()，把自身加入到客户端的任务队列中，这样就形成了任务循环，每隔一段时间，就会执行这个函数。从而，客户端与 tracker 的通信能够持续的进行下去。L
+self.sched(self.c, self.interval);k
+IB,
+if self.ever_got_incoming():bt#l0
+# 如果曾经接受到过外来的连接，那么说明这个客户端是可以接受外来连接的，也就是说很可能处于“公网”之中，所以并非很迫切的需要从 tracker 那里获取 peers 列表。（既可以主动连接别人，也可以接受别人的连接，所以有点不紧不慢的味道）。
+getmore = self.howmany() <= self.minpeers / 
+else:Lo
+# 如果从来没有接受到过外来的连接，那么很有可能处于内网之中，根本无法接受外来的连接。这种情况下，只有主动的去连接外部的 peers，所以要尽可能的向 tracker 请求更多的 peers。（只能去连接别人，所以更迫切一些）。
+getmore = self.howmany() < self.minpeerst>#
+if getmore or time() - self.last_time > self.announce_interval:%
+# 如果有必要从 tracker 那里获取 peers 列表，且任务执行时间已到，则调用 announce() 开始与 tracker 通信d/
+self.announce()}
+
+③ def begin(self): # 调用前面提到的 RawServer::add_task()，把 Rerequester::c() 加入到 rawserver对象的任务队列中
+self.sched(self.c, self.interval)P
+# 宣布与 tracker 的通信开始。。。。
+
+self.announce(0)4B}6r
+
+⑤ def announce(self, event = None):=b`s ~
+self.last_time = time()o8VD
+# 传递给 tracker 的信息，放在 HTTP GET 命令的参数中。所以，首先就是构造这个参数。40LU
+# 传递给 tracker 的信息，必须包括 uploaded、downloaded、left 信息。其它入 last、trackerid、numwant、compact、event 是可选的。这些参数的解释请看 BT协议规范。F5]D
+s = ('%s&uploaded=%s&downloaded=%s&left=%s' %qWQz:f
+(self.url, str(self.up()), str(self.down()), str(self.amount_left())))$jr}
+if self.last is not None:@glu{5
+s += '&last=' + quote(str(self.last))&|4\
+if self.trackerid is not None:GH{d
+s += '&trackerid=' + quote(str(self.trackerid))z{Me
+if self.howmany() >= self.maxpeers:\_a
+s += '&numwant=0' else:KCN(<
+s += '&compact=1'^sCx*K
+if event != None:7ktM
+s += '&event=' + ['started', 'completed', 'stopped'][event]%(NC
+set = SetOnce().set@l\'Fy
+
+# 函数中可以嵌套定义函数，这是 python 语法特别的地方。qb=hzF
+# 调用 RawServer::add_task() 把 checkfail() 加入到任务队列中。在 timeout 时间之后，检查向 tracker 发的GET命令是否失败。u
+def checkfail(self = self, set = set):F[$(X
+if set():->Of
+if self.last_failed and self.upratefunc() < 100 and self.downratefunc() < 100:8MA"
+self.errorfunc('Problem connecting to tracker - timeout exceeded')Kg
+self.last_failed = TrueC"_Xe
+self.sched(checkfail, self.timeout))
+
+# 创建一个线程，执行 Rerequester::rerequest()${
+# 可见，客户端与 tracker之间的通信是由单独的线程完成的#\
+Thread(target = self.rerequest, args = [s, set]).start()r9y
+
+⑥ def rerequest(self, url, set):D>w
+try:8N:}c
+
+# 调用 urlopen() ，向 tracker 发送命令O=`&
+h = urlopen(url)*
+# read() 返回 tracker 的响应数据。8(fk
+r = h.read())8T
+h.close()N
+if set()::@Do
+def add(self = self, r = r):4
+self.last_failed = FalseQ$#K
+# 从 tracker 响应回来的数据，由 postrequest() 处理。/
+self.postrequest(r)6
+# externalsched() 同样是调用 RawServer::add_task()，这样，由主线程调用 postrequest() 函数，处理 tracker 响应的数据。（不要忘记，我们现在是处在一个单独的子线程中。）nn7g:
+self.externalsched(add, 0)F
+except (IOError, error), e:)
+if set():t_qR
+def fail(self = self, r = 'Problem connecting to tracker - ' + str(e)):3y
+if self.last_failed:=<
+self.errorfunc(r)qself.last_failed = True<
+self.externalsched(fail, 0)=
+
+⑦ def postrequest(self, data):&TH8\
+try:=
+# 对服务器响应的数据解码。请参看BT协议规范。&!lY
+r = bdecode(data)jMd
+# 检查 peers 有效性？UJ
+check_peers(r)&Tq
+if r.has_key('failure reason'):D.ew-4
+self.errorfunc('rejected by tracker - ' + r['failure reason'])~!S{4
+else:e
+if r.has_key('warning message'):'i~
+self.errorfunc('warning from tracker - ' + r['warning message'])Q- ?.E
+
+# 根据 tracker 的响应，调整BT客户端的参数。WY,t
+self.announce_interval = r.get('interval', self.announce_interval)ZP1B
+self.interval = r.get('min interval', self.interval)^lMQ4
+self.trackerid = r.get('tracker id', self.trackerid)lGc2vU
+self.last = r.get('last')z
+
+# 将其它下载者的信息保存到 peers 数组中。
+p = r['peers']
+peers = []
+if type(p) == type(''):
+for x in xrange(0, len(p), 6):7X)*&
+ip = '.'.join([str(ord(i)) for i in p[x:x+4]])K
+port = (ord(p[x+4]) << | ord(p[x+5])0
+peers.append((ip, port, None))E3c4#
+else:V2>uD
+for x in p:A
+peers.append((x['ip'], x['port'], x.get('peer id')))duEK#r
+ps = len(peers) + self.howmany()c=
+if ps < self.maxpeers:7$ %x
+if self.doneflag.isSet():%
+if r.get('num peers', 1000) - r.get('done peers', 0) > ps * 1.2:ty%O
+self.last = NoneG
+else:}Q
+if r.get('num peers', 1000) > ps * 1.2:~!zZC
+self.last = None6(:E
+# 这里的 connect，即前面的Encoder::start_connection()，
+
+# 至此，已经成功的完成了一次与 tracker 服务器的通信，并且从它那里获取了 peers 列表；下面就与这些 peers 挨个建立连接；至于建立连接的过程，就要追踪到 Encoder 类中了，且听下回分解。
+for x in peers:WXGB,q
+# x[0]:ip, x[1]:port, x[2]:id8gZ+S5
+self.connect((x[0], x[1]), x[2])x
+except valueError, e:oHd>
+if data != '':GX3=
+self.errorfunc('bad data from tracker - ' + str(e))"d
+
+l小结：
+这篇文章，我们重点分析了BT客户端与 tracker 服务器通信的过程。我们知道了，客户端要每隔一段时间，就去连接 tracker 一次，它是以一个单独的线程执行的。这个线程在接受到 tracker 的响应数据后，交给主线程（既主程序）来进行分析。主程序从响应数据中，获得 peers 列表。然后调用 Encoder::start_connection() 挨个与这些 peers 尝试建立连接。
+
+BitTorrent 协议规范（BT协议集合）二十
+作者：小马哥
+
+本篇文章分析 Tracker 类，它在 track.py 文件中。
+
+在分析之前，我们把前几篇文章的内容再回顾一下，以理清思路。
+
+BT的源码，主要可以分为两个部分，一部分用来实现 tracker 服务器，另一部分用来实现BT的客户端。我们这个系列的文章围绕 tracker 服务器的实现来展开。
+
+BT 客户端与 tracker 服务器之间，通过 track HTTP协议进行通信，而BT客户端之间以BT对等协议进行通信。
+
+Tracker 服务器的职责是搜集客户端的信息，并帮助客户端相互发现对方，从而使得客户端之间能够相互建立连接，进而互相能下载所需的文件片断。
+
+在实现 tracker 服务器的时候，首先是通过 RawServer 类来实现网络服务器的功能，然后由 HTTPHandler 类来完成对协议数据的第一层分析。因为 track HTTP 协议是以HTTP协议的形式交互的，所以 HTTPHandler 按照HTTP的协议对客户端的请求进行第一层处理（也就是取得URL和HTTP 消息头），然后把URL和 HTTP消息头进一步交给 Tracker类来进行第二层分析，并把分析的结果按照 HTTP协议的格式封装以后，发给客户端。
+
+Tracker 类对 track HTTP协议做第二层分析，它根据第一层分析后的URL以及HTTP消息头，进一步得到客户端的信息（包括客户端的ip地址、端口、已下载完的数据以及剩余数据等等），然后综合当前所有下载者的情况，生成一个列表，这个列表记录了下载同一个文件的其它下载者的信息（但不是所有的下载者，只是选择一部分），并把这个列表交给 HTTPHandler，由它进一步返回给客户端。
+
+如此，整个 tracker 服务器的实现，在层次上就比较清晰了。
+
+    为了分析 Tracker类，首先要理解“状态文件”。
+
+l       状态文件：
+
+在第一篇文章中，我们说到，要启动一个 tracker 服务器，至少要指定一个参数，就是状态文件。在 Tracker 的初始化函数中，主要就是读取指定的状态文件，并根据该文件做一些初始化的工作。所以必须弄清楚状态文件的作用：
+
+1.       状态文件的作用：
+
+tracker 服务器如果因为某些意外而停止，那么所有的下载者不仅不能继续下载，而且先前所做的努力都前功尽弃。这种情况是不能容忍的，因此，必须保证在 tracker 重新启动之后，所有的下载者还能继续工作。Tracker 服务器周期性的将当前系统中必要的下载状态信息保存到状态文件中，在它因故停止，而后又重新启动的时候，可以根据这些信息重新恢复“现场”，从而使得下载者可以继续下载。
+
+2.       状态文件的格式：
+
+状态文件的信息对应着一个比较复杂的4级嵌套的字典。
+
+要详细分析这个字典类型，必须理解一点：一个 tracker 服务器，可以同时为下载不同文件的几批下载者提供服务。
+
+我们知道，一批下载同一个文件的下载者，它们必然拥有同样的 torrent 文件，它们能根据 torrent 文件找到同一个 tracker 服务器。而下载另一个文件的一批下载者，必然拥有另外一个 torrent 文件，但是这两个不同的 torrent 文件，可能指向的是同一个 tracker 服务器。所以说“一个 tracker 服务器，可以同时为下载不同文件的几批下载者提供服务。”
+
+实际上，那些专门提供 bt 下载的网站，都是架设了一些专门的 tracker 服务器，每个服务器可以同时为多个文件提供下载跟踪服务。
+
+理解了这一点，我们继续分析状态文件的格式。
+
+第一级字典：
+
+在 Tracker 的初始化函数中，有这样的代码，
+
+if exists(self.dfile):
+
+h = open(self.dfile, 'rb')
+
+ds = h.read()
+
+h.close()
+
+tempstate = bdecode(ds)
+
+else:
+
+tempstate = {}
+
+    这段代码是从从状态文件中读取信息，由于读到的是经过 Bencoding 编码后的数据，所以还需要经过解码，解码后就得到一个字典类型的数据，保存到 template 中，这就是第一级字典。它有两个关键字，peers 和 completed，分别用来记录参与下载的peer的信息和已经完成了下载的peer的信息（凡是出现在 completed的peer，也必然出现在 peers中）。这两个关键字对应的数据类型都是字典，我们重点分析 peers 关键字所对应的第二级字典。
+
+第二级字典：
+
+关键字：torrent文件中 info 部分的 SHA hash
+
+数据：第三级字典
+
+一个被下载的文件，唯一的被一个 torrent 文件标识，tracker通过计算torrent文件中 info 部分的 SHA hash，这是一个20字节的字符串，它可以唯一标识被下载文件的信息。第二级字典以此字符串作为关键字，保存下载此文件的下载者们的信息。
+
+第三级字典：
+
+关键字：下载者的 peer id
+
+数据：第四级字典
+
+解释：每个下载者，都创建一个唯一标识自己的20字节的字符串，称为 peer id。第三级字典以次为关键字，保存每个下载者的信息。
+
+第四级字典：
+
+关键字： ip、port、left等
+
+数据：分别保存下载者的 ip地址、端口号和未下载完成的字节数
+
+另外还有两个可选的关键字given ip 和nat，它们是用于 NAT 的，关于NAT的情况，后面会再提到。
+
+理解了这个4级嵌套的字典，对 Tracker 的分析才好继续进行下去。
+
+下面我们挨个看 Tracker 类的成员函数。
+
+l       初始化函数 __init__()：
+
+开始是一些参数的初始化，其中比较难理解的有
+
+self.response_size = config['response_size']
+
+self.max_give = config['max_give']
+
+要理解这两个参数，必须看那份更详细的BT协议规范中对“numwant”关键字的解释：
+
+· numwant: Optional. Number of peers that the client would like to receive from the tracker. This value is permitted to be zero. If omitted, typically defaults to 50 peers.
+
+If a client wants a large peer list in the response, then it should specify the numwanted parameter.
+
+意思就是说，默认情况下，tracker 服务器给下载者响应的 peers 个数是 response_size 个，但有时候，下载者可能希望获得更多的 peers 信息，那么它必须在请求中包含 numwant 关键字，并指定希望获得 peers 的个数。例如是 300，tracker 取 300和 max_give中较小的一个，作为返回给下载者的 peers 的个数。
+
+self.natcheck = config['nat_check']
+
+self.only_local_override_ip = config['only_local_override_ip']
+
+这两个参数是和 NAT 相关的，我们终于必须要说到 NAT 了。
+
+我们知道，如果一个 BT 客户端处在局域网中，通过 NAT 之后连到 tracker 服务器的话，那么 tracker 服务器从连接中获得的该客户端的 IP 地址是一个公网IP，如果其它客户端通过这个 IP 试图连接该客户端的话，肯定会被 NAT 拒绝的。
+
+通过一些 NAT 穿越的技术，在某些情况下，可以让一些客户端穿过 NAT，与处在局域网中的客户端建立连接，具体的技术资料我已经贴在论坛上了，大家有兴趣可以去看一看。原来我以为 BT 也用到了一些 NAT 穿越技术，但现在发现并没有，可能是技术实现上比较复杂，而且不能保证在任何情况下都有效的原因吧。
+
+我们来看那份比较详细的协议规范中，对“ip”关键字的解释：
+
+· ip: Optional. The true IP address of the client machine, in dotted quad format. Notes: In general this parameter is not necessary as the address of the client can be determined from the IP address from which the HTTP request came. The parameter is only needed in the case where the IP address that the request came in on is not the IP address of the client. This happens if the client is communicating to the tracker through a proxy (or a transparent web proxy/cache.) It also is necessary when both the client and the tracker are on the same local side of a NAT gateway. The reason for this is that otherwise the tracker would give out the internal (RFC1918) address of the client, which is not routeable. Therefore the client must explicitly state its (external, routeable) IP address to be given out to external peers. Various trackers treat this parameter differently. Some only honor it only if the IP address that the request came in on is in RFC1918 space. Others honor it unconditionally, while others ignore it completely.
+
+在客户端发给 tracker 服务器的请求中，可能包含“ip”，也就是指定自己的 IP 地址。你可能有疑问了，客户端为什么要通知 tracker服务器自己的 ip 地址了？tracker 服务器完全可以从连接中获得这个 ip 啊。嗯，实际的网络情况是非常复杂的，如果客户端是在局域网内通过 NAT 后上网，或者客户端是通过某个代理服务器之后，再与 tracker 服务器建立连接，那么 tracker 从连接中获得的 ip 地址并不是客户端真实的 ip 地址，为了获得真实的ip，必须让客户端主动在协议中通知tracker。因此，就出现了两个 ip 地址，一个是从连接中获得的 ip 地址，我把它叫做“连接ip”，另一个是客户端通过请求传递过来的 ip，我叫它“真实ip”。显然，tracker 应该把客户端的“真实ip”记录下来，并把这个“真实ip”通知给其它下载者。
+
+这个“ip”参数又是可选的，也就是说，如果客户端拥有一个公网的ip，而且并没有通过NAT或者代理，那么，它并不需要传递这个参数，“连接ip”就是“真实ip”。
+
+按协议规发的说法，“ip”这个参数在以下两种情况下有用：
+
+1、客户端可能拥有一个公网IP，但它又是通过一个代理服务器与tracker服务器建立连接的，它需要传递“ip”。
+
+2、客户端在某个局域网中，恰好tracker也在同一个局域网中，。。。（这种情况又会怎么样了？我还没有弄明白 ：）
+
+回过头来看 natcheck 和 only_local_override_ip，
+
+natcheck ：how many times to check if a downloader is behind a NAT (0 = don't check)
+
+only_local_override_ip：如果从 GET 参数中传递过来的 ip，是一个公网 ip，是否忽略它？它的默认值是 1。
+
+现在还不好理解它的意思，我们看后面代码的时候，再来理解它。
+
+self.becache1 = {}
+
+self.becache2 = {}
+
+self.cache1 = {}
+
+self.cache2 = {}
+
+self.times = {}
+
+这里出现5个字典，其中times 用来，而其它4个字典的作用是什么？
+
+嗯，还是让我们先来看看在“BT移植邮件列表”中，Bram Cohen 发的一个帖子，
+
+There are two new GET parameters for the tracker in the latest release. They are –
+
+key=xxxx - this is like peer id, but it's only known to the client and the tracker. It allows clients to be behind dynamic IP. If a peer announced a key previously, then it's accepted if and only if it gives the same key again. If no key was given, then the fallback is checking that the IP hasn't changed. If the IP has changed, mainline currently will give a peer list but not change any data related to that peer, so that peers behind dynamic IP using old clients will continue to work okay. Currently mainline generates the value associated with key as eight random hex values, and the tracker accepts any string from clients.
+
+compact=1 - when a client sends this, the 'peers' return value is a single string whose length is a multiple of 6 rather than a dict. To extract peer information from the string, chop it into substrings of length 6. For each substring, the first four bytes are the IP and the last two are the port, encoded big-endian. This results in huge bandwidth savings.
+
+Everybody developing ports should implement these keys, they're very useful.
+
+-Bram
+
+BT 在不停的向前发展，所以协议规范也在发展之中，新引入了两个关键字，其中一个是 compact，如果客户端请求中 compact=1，表示紧凑模式，也就是tracker给客户端响应的数据，采用一种比原来更紧凑的形式，这样可以有效的节约带宽。
+
+Becache1 和 cache1用于普通模式，而 becache2和 cache2用于紧凑模式。我们马上能看到它们的初始化操作。
+
+if exists(self.dfile):
+
+h = open(self.dfile, 'rb')
+
+ds = h.read()
+
+h.close()
+
+tempstate = bdecode(ds)
+
+else:
+
+tempstate = {}
+
+if tempstate.has_key('peers'):
+
+self.state = tempstate
+
+else:
+
+self.state = {}
+
+self.state['peers'] = tempstate
+
+self.downloads = self.state.setdefault('peers', {})
+
+self.completed = self.state.setdefault('completed', {})
+
+statefiletemplate(self.state)
+
+这部分代码是读取状态文件，初始化 downloads和completed这两个字典，并检查读取的数据是否有效。
+
+现在，downloads里面是保存了所有下载者的信息，而 completed保存了所有完成下载的下载者的信息。
+
+for x, dl in self.downloads.items():
+
+self.times[x] = {}
+
+    for y, dat in dl.items():
+
+          self.times[x][y] = 0
+
+        if not dat.get('nat',1):
+
+            ip = dat['ip']
+
+          gip = dat.get('given ip')
+
+          if gip and is_valid_ipv4(gip) and (not self.only_local_override_ip or is_local_ip(ip)):
+
+              ip = gip
+
+self.becache1.setdefault(x,{})[y] = Bencached(bencode({'ip': ip, 'port': dat['port'], 'peer id': y}))
+
+          self.becache2.setdefault(x,{})[y] = compact_peer_info(ip, dat['port'])
+
+这里，对 times、becache1、becache2初始化。它们都是2级嵌套的字典，第一级的关键字是 torrent 文件中的 info 部分的 hash，第二级关键字是下载者的 peer id，becache1保存的是一个 Bencached 对象，而 becache2 保存的是一个字符串，它是把 ip和port 组合成的一个字符串。
+
+参数设置完之后，有：
+
+rawserver.add_task(self.save_dfile, self.save_dfile_interval)
+
+add_task() 我们已经见到过好多次了，这表示每隔一段时间，需要调用 save_dfile() 来保存状态文件。
+
+再后面的代码，我没有仔细看了，象 allow_get 和 allowed_dir 等的意义，还需要看相关的代码才能明白，如果你仔细看了这些部分，希望能补充一下。
+
+初始化以后，就是 Tracker 的最重要，也是代码最长的函数： get() 。
+
+l       get()：
+
+在第三篇文章中，我们已经看到，在由 HTTPHandler 对 track HTTP协议进行第一层分析之后，就是调用 Tracker::get() 来进行第二层分析的。它的参数是 URL 和 HTTP 消息头。
+
+在这个函数中，首先调用 urlparse() 对 URL 进行解析，例如这样的 URL ：
+
+/announce?ip=192.168.112.1&port=9999&left=2000
+
+解析之后，就获得了 path，是announce，还有参数，包括：
+
+ip：192.168.112.1
+
+port：9999
+
+left：2000
+
+然后，根据 path 的不同，分别处理。
+
+一般来说，客户端发给 tracker 的请求中，path 都是 announce，但有时候，第三方可能也想查询一下 tracker 服务器的状态，那么它可以通过其它的 path 来向 tracker 服务器请求，例如 scrape。在一些专门提供 bt 下载的网站上，我们可以看到不停更新的下载者、种子个数等信息，就是用这种方式从 tracker 服务器处获得的。
+
+我们只看 path 是 announce 的情况。
+
+首先是对客户端传递来的参数的有效性进行检查，包括是不是有 info_hash 关键字？ip地址是否合法等等。
+
+然后，
+
+ip = connection.get_ip()
+
+这样得到的 ip ，是根据客户端与 tracker 服务器建立的连接中获取的 ip，就是“连接ip”了。
+
+接下来，
+
+ip_override = 0
+
+if params.has_key('ip') and is_valid_ipv4(params['ip']) and (not self.only_local_override_ip or is_local_ip(ip)):
+
+ip_override = 1
+
+这段代码的意图，是为了判断在随后保存客户端的 ip 地址的时候，是否要用“真实ip”来取代“连接ip”。如果 ip_override 为1，那么就保存“真实ip”，也就是“连接ip”被“真实ip”覆盖（override）了。
+
+分析源码的过程其实就是揣测作者意图的过程，我的揣测是这样的：
+
+如果客户端从请求中传递了“真实ip”，那么对 tracker来说，，既然客户端都已经报告了“真实ip”了，那么当然就保存“真实ip”就好了。可如果“真实 ip ”是个公网 ip，而且only_local_override_ip=1，也就是说，忽略“真实ip”为公网ip的情况，那么，保存的是“连接”ip。
+
+说句实话，为什么要设置 only_local_override_ip 这么一个参数，我还是没有弄明白。
+
+if peers.has_key(myid):
+
+myinfo = peers[myid]
+
+if myinfo.has_key('key'):
+
+if params.get('key') != myinfo['key']:
+
+            return (200, 'OK', {'Content-Type': 'text/plain', 'Pragma': 'no-cache'},
+
+                bencode({'failure reason': 'key did not match key supplied earlier'}))
+
+    confirm = 1
+
+elif myinfo['ip'] == ip:
+
+      confirm = 1
+
+else:
+
+    confirm = 1
+
+这段代码涉及到身份验证吧，我没有仔细看了，关于 “key”的解释，请看上面Bram Cohen的帖子。
+
+接下来，如果验证通过，而且事件不是“stopped”，那么就把客户端的信息保存下来。如果已经存在该客户端的信息，那么就更新一下。注意这里 ip_override 派上了用场，也就是如果覆盖，那么保存的是“真实ip”，否则保存的是“连接ip”。
+
+if port == 0:
+
+peers[myid]['nat'] = 2**30
+
+elif self.natcheck and not ip_override:
+
+to_nat = peers[myid].get('nat', -1)
+
+if to_nat and to_nat < self.natcheck:
+
+NatCheck(self.connectback_result, infohash, myid, ip, port, self.rawserver)
+
+    else:
+
+peers[myid]['nat'] = 0
+
+    第一个 port == 0 的情况，不知道是什么意思？
+
+第二个表示要检查 NAT的情况。大概意思就是 tracker服务器主动用 BT对等协议与该客户端进行握手，如果握手成功，那么说明该客户端是可以被直接连接的。这一点很重要，如果 tracker 服务器无法和客户端直接建立连接的话，那么其它下载者也无法和该客户端建立连接。
+
+这里用到的 NatChecker 类，也是一个 Handler 类，具体细节，大家自己分析吧。
+
+data = {'interval': self.reannounce_interval}
+
+从这到最后，就是根据紧凑模式和普通模式两种不同情况，分别从 becache1或者 becache2中，返回随机的 peers 的信息。
+
+在这里，我们来总结一下 cache1、becache1、cache2、becache2的用处。我感觉 cache1和 cache2 好像没什么作用，因为从代码中没有看到它们两的意义。Becache1和 becache2则分别用于普通模式和紧凑模式情况下，对 peers 的信息进行缓存。它们从状态文件中初始化自己；如果有新的 peer 出现，被添加到这两个缓存中；如果是“stopped”事件，那么从缓存中删除对应的 peer。最后，tracker 根据情况，从其中一个缓存取得随机的 peers 的信息，返回给客户端。
+
+l       connectback_result()
+
+这个函数，用于 NatCheck 类作为回调函数。它根据 tracker 服务器主动与客户端建立连接的结果做一些处理。其中的参数 result，是表示tracker 与客户端建立连接是否成功。如果建立成功，显然对方不在 NAT 后面，否则就是在 NAT 后面了。record['nat'] += 1 这没看懂，为什么不是直接 record['nat'] = 1 ？最后，如果建立连接成功，那么更新一下 becache1 和 becache2。
+
+BitTorrent 协议规范（BT协议集合）二一
+BT客户端开始一个下载首先要处理的就是torrent文件.
+而torrent文件使用bencoding编码.
+所以实现bencoding编码的解析器,就是第一步工作.
+
+Bencoding is done as follows:
+Strings are length-prefixed base ten followed by a colon and the string. For e
+xample '4:spam' corresponds to 'spam'.
+Integers are represented by an 'i' followed by the number in base 10 followed
+by an 'e'. For example 'i3e' corresponds to 3 and 'i-3e' corresponds to -3. In
+tegers have no size limitation. 'i-0e' is invalid. All encodings with a leadin
+g zero, such as 'i03e', are invalid, other than 'i0e', which of course corresp
+onds to 0.
+Lists are encoded as an 'l' followed by their elements (also bencoded) followe
+d by an 'e'. For example 'l4:spam4:eggse' corresponds to ['spam', 'eggs'].
+Dictionaries are encoded as a 'd' followed by a list of alternating keys and t
+heir corresponding values followed by an 'e'. For example, 'd3:cow3:moo4:spam4
+:eggse' corresponds to {'cow': 'moo', 'spam': 'eggs'} and 'd4:spaml1:a1:bee' c
+orresponds to {'spam': ['a', 'b']} . Keys must be strings and appear in sorted
+order (sorted as raw strings, not alphanumerics).
+
+下面是实现的bencoding解码器的VC++源代码:
+
+
+// BEncode.h: interface for the CBEncode class.
+//
+//////////////////////////////////////////////////////////////////////
+
+#if !defined(AFX_BENCODE_H__4D0BB462_2AE0_45B3_8BE8_19D51B2DBB2E__INCLUDED_)
+#define AFX_BENCODE_H__4D0BB462_2AE0_45B3_8BE8_19D51B2DBB2E__INCLUDED_
+
+#if _MSC_VER > 1000
+#pragma once
+#endif // _MSC_VER > 1000
+#pragma warning( disable : 4786 )
+#pragma warning( disable : 4355 )
+#include
+#include
+#include
+#include
+using namespace std;
+enum BEncodeParserErrorCode
+{
+  enm_BEncodeErr_noerr = 0,//没有错误   
+  enm_BEncodeErr_errString,//错误的字符串
+  enm_BEncodeErr_errInt,//错误的整型数据
+  enm_BEncodeErr_errList,//错误的列表
+  enm_BEncodeErr_errDict,//错误的词典结构
+  enm_BEncodeErr_End,//文本结束
+  enm_BEncodeErr_unknown//未知错误
+};
+enum BEncodeObjectType
+{
+  enum_BEncodeType_Objectbase = 0,   
+  enum_BEncodeType_String,
+  enum_BEncodeType_Int,
+  enum_BEncodeType_List,
+  enum_BEncodeType_Dict,
+};
+class CBEncodeObjectBase
+{
+public:
+  CBEncodeObjectBase(BEncodeObjectType type = enum_BEncodeType_Objectbase){m
+_type = type;clear();}
+  virtual ~CBEncodeObjectBase(){};
+  void clear(){szPos = NULL;m_error = enm_BEncodeErr_noerr;}
+public:
+  BEncodeObjectType m_type;   //对象类型
+  char * szPos;   //对象在字符串中的位置
+  int ilen;//对象的数据长度
+  BEncodeParserErrorCode m_error;//错误值   
+};
+class CBEncodeInt : public CBEncodeObjectBase
+{
+public:
+  CBEncodeInt() : CBEncodeObjectBase(enum_BEncodeType_Int) {}
+  virtual ~CBEncodeInt(){}      
+public:   
+  int m_iValue;//整型对象的值
+};
+class CBEncodeString : public CBEncodeObjectBase
+{
+public:
+  CBEncodeString() : CBEncodeObjectBase(enum_BEncodeType_String) {m_szData =
+NULL;}
+  virtual ~CBEncodeString(){}      
+public:   
+  bool getstring(string & strValue)
+  {
+    if(m_error == enm_BEncodeErr_noerr && m_szData)
+    {
+        strValue.assign(m_szData,m_ilen);
+        return true;
+    }
+    return false;
+  }
+  char * m_szData;
+  int m_ilen;
+};
+class CBEncodeList : public CBEncodeObjectBase
+{
+public:
+  CBEncodeList() : CBEncodeObjectBase(enum_BEncodeType_List) {}
+  virtual ~CBEncodeList(){clear();}
+  void clear()
+  {         
+    list::iterator it;
+    for(it = m_listObj.begin();it!=m_listObj.end();++it)
+        delete (*it);
+    m_listObj.clear();
+  }
+public:   
+  list m_listObj;
+};
+class CBEncodeDict : public CBEncodeObjectBase
+{
+public:
+  CBEncodeDict() : CBEncodeObjectBase(enum_BEncodeType_Dict) {}
+  virtual ~CBEncodeDict(){clear();}
+  CBEncodeObjectBase* getvalue(const char * szName)
+  {
+    map::iterator it = m_mapObj.find(szName);
+
+    if(it != m_mapObj.end())
+        return it->second;
+    return NULL;
+  }
+  void clear()
+  {         
+    list::iterator it;
+    for(it = m_listObj.begin();it!=m_listObj.end();++it)
+        delete (*it);
+    m_listObj.clear();
+    m_mapObj.clear();
+  }
+public:   
+  map m_mapObj;//
+  list m_listObj;//真正的对象保存在list中,list是一个nam
+e对象一个value对象.map只是一个映射表,引用了指针而已
+};
+class CBEncode
+{
+public:
+  bool readint(char *szCurPos,int & iendpos,list & list
+Obj);
+  bool readstring(char *szCurPos,int & iendpos,list & l
+istObj);   
+  bool readlist(char *szCurPos,int & iendpos,list & lis
+tObj);   
+  bool readdict(char *szCurPos,int & iendpos,list & lis
+tObj);   
+  bool parse(const char * szData);
+  CBEncode();
+  virtual ~CBEncode();
+  void clear()
+  {   
+    list::iterator it;
+    for(it = m_listObj.begin();it!=m_listObj.end();++it)
+        delete (*it);
+    m_listObj.clear();   
+  }
+public:
+  list m_listObj;
+  CBEncodeObjectBase* m_plastObj;//解析出来的最后一个对象
+  char * m_szTxt;
+};
+
+#endif // !defined(AFX_BENCODE_H__4D0BB462_2AE0_45B3_8BE8_19D51B2DBB2E__INCLUD
+ED_)
+
+// BEncode.cpp: implementation of the CBEncode class.
+//
+//////////////////////////////////////////////////////////////////////
+
+#include "stdafx.h"
+#include "BEncode.h"
+
+//////////////////////////////////////////////////////////////////////
+// Construction/Destruction
+//////////////////////////////////////////////////////////////////////
+
+CBEncode::CBEncode()
+{
+  m_plastObj = NULL;
+  m_szTxt = NULL;
+}
+
+CBEncode::~CBEncode()
+{
+  clear();
+}
+
+bool CBEncode::parse(const char *szData)
+{
+  if(szData == NULL||*szData==NULL)
+    return false;
+  clear();
+  m_szTxt = (char*)szData;
+  char * szCurPos = (char*)szData;
+  int iendpos;
+  while(*szCurPos)
+  {   
+    if(*szCurPos== 'i')
+    {
+        if(!readint(szCurPos,iendpos,m_listObj))
+          break;//遇到任何错误都终止整个解析
+        szCurPos+=iendpos;
+    }
+    else if(*szCurPos== 'l')
+    {
+        if(!readlist(szCurPos,iendpos,m_listObj))
+          break;
+        szCurPos+=iendpos;
+    }
+    else if(*szCurPos== 'd')
+    {
+        if(!readdict(szCurPos,iendpos,m_listObj))
+          break;
+        szCurPos+=iendpos;
+    }
+    else         
+    {
+        if(!readstring(szCurPos,iendpos,m_listObj))
+          break;
+        szCurPos+=iendpos;
+    }
+  }
+  if(*szCurPos==0&&m_plastObj->m_error == enm_BEncodeErr_noerr)
+    return true;
+  return false;
+}
+//从当前位置读取一个字符串
+bool CBEncode::readstring(char *szCurPos,int & iendpos,list*> & listObj)
+{   
+  char * szTmp = szCurPos;
+  CBEncodeString * pNewString = new CBEncodeString;   
+  pNewString->szPos = szCurPos;
+
+  char szLen[20];
+  int i = 0;
+  while(*szTmp>='0'&&*szTmp<='9')
+    szLen[i++]=*(szTmp++);
+  szLen=0;
+  if(*szTmp==':')
+  {
+    int ilen = atoi(szLen);
+    if(ilen>0)
+    {   
+        pNewString->m_szData = ++szTmp;
+        pNewString->m_ilen = ilen;
+        szTmp+=ilen;
+    }
+    else
+        pNewString->m_error = enm_BEncodeErr_errString;
+  }
+  else
+    pNewString->m_error = enm_BEncodeErr_errString;
+  listObj.push_back(pNewString);
+  iendpos = szTmp-szCurPos;         
+  m_plastObj = pNewString;
+  m_plastObj->ilen = iendpos;
+  return pNewString->m_error == enm_BEncodeErr_noerr?true:false;
+}
+//读取一个整型数据
+bool CBEncode::readint(char *szCurPos,int & iendpos,list
+& listObj)
+{
+  char * szTmp = szCurPos;
+  CBEncodeInt * pNewInt= new CBEncodeInt;   
+  pNewInt->szPos = szCurPos;
+
+  if(*szTmp == 'i')
+  {   
+    szTmp++;
+    char szLen[20];
+    int i = 0;
+    while(*szTmp>='0'&&*szTmp<='9')
+        szLen[i++]=*(szTmp++);
+    szLen=0;
+    if(*szTmp=='e')
+    {
+        pNewInt->m_iValue = atoi(szLen);         
+        ++szTmp;
+    }
+    else
+        pNewInt->m_error = enm_BEncodeErr_errInt;
+  }
+  else
+    pNewInt->m_error = enm_BEncodeErr_errInt;
+  listObj.push_back(pNewInt);
+  iendpos = szTmp-szCurPos;   
+  m_plastObj = pNewInt;
+  m_plastObj->ilen = iendpos;
+  return pNewInt->m_error == enm_BEncodeErr_noerr?true:false;
+}//读取一个列表
+bool CBEncode::readlist(char *szCurPos,int & iendpos,list
+& listObj)
+{
+  char * szTmp = szCurPos;
+  CBEncodeList * pNewList= new CBEncodeList;
+  pNewList->szPos = szCurPos;
+  if(*szTmp == 'l')
+  {
+    szTmp++;
+    int ilistendpos;
+    while(*szTmp!='e')
+    {
+        if(*szTmp== 'i')
+        {
+          if(!readint(szTmp,ilistendpos,pNewList->m_listObj))
+            break;//遇到任何错误都终止整个解析
+          szTmp+=ilistendpos;
+        }
+        else if(*szTmp== 'l')
+        {
+          if(!readlist(szTmp,ilistendpos,pNewList->m_listObj))
+            break;
+          szTmp+=ilistendpos;
+        }
+        else if(*szTmp== 'd')
+        {
+          if(!readdict(szTmp,ilistendpos,pNewList->m_listObj))
+            break;
+          szTmp+=ilistendpos;
+        }
+        else         
+        {
+          if(!readstring(szTmp,ilistendpos,pNewList->m_listObj))
+            break;
+          szTmp+=ilistendpos;
+        }
+    }   
+    if(*szTmp!='e'||m_plastObj->m_error != enm_BEncodeErr_noerr)
+        pNewList->m_error = enm_BEncodeErr_errList;
+    else
+        szTmp++;
+  }
+  else
+    pNewList->m_error = enm_BEncodeErr_errList;
+  listObj.push_back(pNewList);
+  iendpos = szTmp-szCurPos;
+  m_plastObj = pNewList;
+  m_plastObj->ilen = iendpos;
+  return pNewList->m_error == enm_BEncodeErr_noerr?true:false;
+}
+//读取一个字典
+bool CBEncode::readdict(char *szCurPos,int & iendpos,list
+& listObj)
+{
+  char * szTmp = szCurPos;
+  CBEncodeDict * pNewDict= new CBEncodeDict;
+  pNewDict->szPos = szCurPos;   
+  if(*szTmp == 'd')
+  {      
+    szTmp++;
+    int ilistendpos;
+    string strname;
+    while(*szTmp!='e')
+    {
+        if(!readstring(szTmp,ilistendpos,pNewDict->m_listObj))
+          break;
+        if(m_plastObj->m_type !=enum_BEncodeType_String)
+          break;         
+        strname.assign(((CBEncodeString *)m_plastObj)->m_szData,((CBEncode
+String *)m_plastObj)->m_ilen);
+        szTmp+=ilistendpos;
+        if(*szTmp== 'i')
+        {
+          if(!readint(szTmp,ilistendpos,pNewDict->m_listObj))
+            break;//遇到任何错误都终止整个解析
+          szTmp+=ilistendpos;
+        }
+        else if(*szTmp== 'l')
+        {
+          if(!readlist(szTmp,ilistendpos,pNewDict->m_listObj))
+            break;
+          szTmp+=ilistendpos;
+        }
+        else if(*szTmp== 'd')
+        {
+          if(!readdict(szTmp,ilistendpos,pNewDict->m_listObj))
+            break;
+          szTmp+=ilistendpos;
+        }
+        else         
+        {
+          if(!readstring(szTmp,ilistendpos,pNewDict->m_listObj))
+            break;
+          szTmp+=ilistendpos;
+        }
+        pNewDict->m_mapObj.insert(pair(strname
+,m_plastObj));         
+    }   
+    if(*szTmp!='e'||m_plastObj->m_error != enm_BEncodeErr_noerr)
+        pNewDict->m_error = enm_BEncodeErr_errDict;
+    else
+        szTmp++;
+  }
+  else
+    pNewDict->m_error = enm_BEncodeErr_errDict;
+  listObj.push_back(pNewDict);
+  iendpos = szTmp-szCurPos;
+  m_plastObj = pNewDict;   
+  m_plastObj->ilen = iendpos;
+  return pNewDict->m_error == enm_BEncodeErr_noerr?true:false;
+}
+BitTorrent 协议规范（BT协议集合）二二
+昨天重新读了BT协议和客户端代码,发现对协议本身部分比较熟悉了,但是对BT在实际运行期间各种行为的发生情景还非常模糊,有些步骤还想清楚,大家一起来讨论一下.
+
+我们来一起描述一下BT各种消息的发送情景. 有些不是特别肯定的我没有加上,大家在这个基础上进行增加或者修改.
+
+其中client指本机上运行的BT客户端.peer指tracker返回的远程客户端.
+piece指torrent文件中的20byte SHA1 hash代表的数据段. block指每次向其他peer请求的数据段(子分片).
+
+[3-16更新]
+1. client->tracker的GET消息.
+<1>第一次启动后发送(携带event为started).
+<2>以后根据tracker reponse中的interval定时发送.
+<3>某种事件发生(stopped, completed)时发送.
+<4>需要更多的peer列表时发送.
+
+2.tracker->client的reponse
+<1>每次收到client的GET请求后发送.
+
+3.client->peer的handshake消息
+<1> client主动向peer发起TCP连接并成功建立，client主动发起handshake.
+<2> peer主动向client发起TCP连接并成功建立, client收到peer的handshake后回应handshake.
+
+4.peer->client的handshake消息
+<1> peer主动向client发起TCP连接并成功建立，peer主动发起handshake.
+<2> client主动向peer发起TCP连接并成功建立, peer收到handshake的handshake后回应handshake.
+
+5.client->peer的bitField消息
+<1> 如果client主动发起连接,client收到peer的handshake回应后,发送bitField消息.
+<2> 如果peer主动发起连接,client回应完handshake后发送bitField消息.
+
+6.peer->client的bitField消息
+<1> 如果peer主动发起连接,peer收到client的handshake回应后,发送bitField消息.
+<2> 如果client主动发起连接,peer回应完handshake后发送bitField消息.
+
+7.client->peer的keep-alive消息
+<1>定时发送(2分钟一次)
+
+8.peer->client的keep-alive消息
+<1>定时发送(2分钟一次)
+
+9.client->peer的choke消息
+<1> 每隔30秒扫描一次peer列表，对不符合条件??的peer发送choke ???
+<2> 如果接到peer的无效request请求,向peer发送choke
+
+10.peer->client的choke消息
+<1> 每隔30秒扫描一次peer列表，对不符合条件??的peer发送choke ???
+<2> 如果接到client的无效request请求,向client发送choke
+
+11.client->peer的unchoke消息
+<1> 每隔30秒扫描一次peer列表，对符合条件??的peer发送unchoke ???
+
+12.peer->client的unchoke消息
+<1> 每隔30秒扫描一次peer列表，对符合条件??的peer发送unchoke ???
+
+13.client->peer的interested消息
+<1> 收到peer的bitField消息后,根据本地情况进行判断是否向peer发送interested消息.
+<2> 收到peer的have消息后,根据本地情况进行判断是否向peer发送interested消息.
+
+14.peer->client的interested消息
+<1> 收到client的bitField消息后,根据本地情况进行判断是否向client发送interested消息.
+<2> 收到client的have消息后,根据本地情况进行判断是否向client发送interested消息.
+
+15.client->peer的not interested消息
+<1> 收到peer的bitField消息后,根据本地情况进行判断是否向peer发送not interested消息.
+<2> 收到peer的piece消息后,根据本地情况进行判断是否向peer发送not interested消息.
+
+16.peer->client的not interested消息
+<1> 收到client的bitField消息后,根据本地情况进行判断是否向client发送not interested消息.
+<2> 收到client的piece消息后,根据本地情况进行判断是否向client发送not interested消息.
+
+17.client->peer的have消息
+<1>client下载某个piece完成并且校验后发送.
+
+18.peer->client的have消息
+<1>peer下载某个piece完成并且校验后发送.
+
+19.client->peer的request消息
+<1>client收到peer的unchoke消息,根据本地情况进行判断是否向peer发送request
+<2>client收到peer的have消息,根据本地情况进行判断是否向peer发送request
+<3>client收到peer的piece消息,根据本地情况进行判断是否向peer发送request
+
+20.peer->client的request消息
+<1>peer收到client的unchoke消息,根据本地情况进行判断是否向client发送request
+<2>peer收到client的have消息,根据本地情况进行判断是否向client发送request
+<3>peer收到client的piece消息,根据本地情况进行判断是否向client发送request
+
+21.client->peer的piece消息
+<1>client收到peer的request消息后,并且发现自己并没有choke对方时发送.
+
+22.peer->client的piece消息
+<1>peer收到client的request消息后,并且发现自己并没有choke对方时发送.
+
+23.client->peer的cancel消息
+<1>client在即将完成下载阶段(endgame),向所有peer发送request消息(是向所有没有choke自己的 peer??), 如果某个peer最先返回了请求的block(piece消息),则向其他未返回的peer发送cancel消息.
+
+也就是说这个阶段client端还是可能收到重复的block.
+
+24.peer->client的cancel消息
+<1>peer在即将完成下载阶段(endgame),向所有peer发送request消息(是向所有没有choke自己的 peer??), 如果某个peer最先返回了请求的block(piece消息),则向其他未返回的peer发送cancel消息.
+也就是说这个阶段如果client还没有给peer发送piece消息,那么会收到cancel消息.
+并且可能在client刚刚给peer发送出piece消息后就收到了cancel消息.
+
+以上的场景描述都是基于个人理解,可能有些地方是错误的,希望大家指出来.
+
+另外对于client端在什么时候开始发送request请求(主动发送还是被动发送),还有就是如何进行上载速率控制(对那些peer分配多少上载带宽,本地上载带宽限制)等问题,我还比较模糊,希望大家指教.尤其象小马哥这样的分析过源码的DX多多发言.
+
+问题:
+1.在libBT中,收到unchoke消息后,也会发送interested/not interested消息,但是我觉得没有必要这样做,在bitField/have消息后更新状态已经保证了每个peer的 interested/not interested状态真实有效.
+2.什么情况下认为一个peer应该被choke/unchoke?
+3.client初始化为 local_interested = 0 //client对peer不感兴趣
+local_choking = 1 //client is choking peer
+remote_interested = 0 //peer对client不感兴趣
+remote_choking =1 //peer is choking client
+因此,应该说client是在收到某个peer的unchoke后才开始从这个peer处下载.然后根据不停的have消息和piece消息完成从某个peer处的连续下载.
+问题在于什么条件下remote peer会给client发送unchoke?? 相同的问题也就是client什么情况下会给peer开始发送unchoke消息??
+从code中可以看到,每个定长时间(30 seconds),检查哪些peer符合unchoke条件(Client没有被peer怠慢，并且Peer对Client感兴趣).但是每个peer的初始状态被设置为了怠慢. 所以不知道如何才能让client去unchoke peer???
+BitTorrent 协议规范（BT协议集合）二三
+概要
+     上一节我们分析了BT客户端与tracker之间的通信过程。通过与 tracker 的通信，客户端获得了参与下载的其它peers 的列表。有了这些 peers 的信息，客户端就可以主动向它们发起连接，为进一步从它们那里获取所需要的文件片断做好准备。这些连接称为“主动连接”。因为连接的发起方是客户端自己。
+     同时，每个客户端在启动以后，都会监听某个端口，用于接受其它 peers 的连接请求。P2P的核心理念就是“公平、对等”，你向别人有所求（下载），就必须有付出（上传）。客户端在接受外来的连接请求之后，就会产生一个新的连接，称之为“被动连接”，因为连接的发起方是其它 peer。
+     无论是被动连接，还是主动连接，一旦连接建立之后，双方就要进行“BT对等协议”的握手。握手成功之后，双方才可以通过这个连接互相传递消息了。为什么要进行握手了？主要目的是为了防止一些错误的连接。这就好比地下党接头，暗号对上了，彼此才建立信任。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+     在这个示意图中，客户端 A 与 其它 peers B、C、D、E 都建立了连接。通过箭头来表示连接建立的方向。A主动与 B、D、E 建立连接；A被动接收C的连接。同时C与D、E与D、B与D之间也都有连接。这样，所有下载者之间就形成了一个网状的结构。
+     同时，这些下载者都要与 tracker 之间不断通信。
+     无论是被动连接，还是主动连接，一旦在“BT对等握手”成功之后，它们就没有任何区别了。下载通过这个连接进行，上传也是通过这个连接进行。
+    
+     本文重点分析BT客户端如何主动向其它 peers 发起连接；BT客户端如何被动接收其它 peers 的连接请求；以及在连接建立成功之后，如何进行BT对等协议握手的过程。
+
+      客户端主动发起连接
+【Encrypter.py】
+     上一节的最后，我们看到调用 Encoder::start_connection() 来向其它 peer 发起连接。所以，从这里开始看起。
+
+class Encoder:
+# start_connection() 需要两个参数：
+dns：对方的ip、port 的组合。
+id： 对方的 id。每个BT客户端都要创建一个唯一的 id 号，并且把这个 id 号报告给 tracker。Id号唯一标识了一个客户端。Id 号的计算方式在 download.py 中。
+myid = 'M' + version.replace('.', '-')
+myid = myid + ('-' * (8 - len(myid))) + b2a_hex(sha(repr(time()) + ' ' +
+str(getpid())).digest()[-6:])
+seed(myid)
+①def start_connection(self, dns, id):
+    if id:
+        # 如果 id 是自己，不连接
+        if id == self.my_id:
+          return
+        # 如果已经和这个peer建立了连接，也不再建立连接。
+        for v in self.connections.values():
+          if v.id == id:
+return
+           # 如果当前连接数过多，暂时不发起连接
+    if len(self.connections) >= self.max_initiate:
+# self.spares 起到缓存的作用。在当前连接数过多的情况下，把本次要连接的 peer 的 ip、port 缓存起来。一旦当前连接数小于设定值 max_initiate， 则可以从 spares 中取出备用的 peers。
+        if len(self.spares) < self.max_initiate and dns not in self.spares:
+          self.spares.append(dns)
+        return
+    try:
+# 调用 RawServer::start_connection()，发起 TCP 的连接。RawServer的代码分析请参看“服务器源码分析”系列文章，不再赘述
+# 返回的 c 是一个 SingleSocket 对象，它封装了 socket 句柄
+        # 如果出错，抛出 socketerror 异常
+        c = self.raw_server.start_connection(dns)
+# 成功建立 TCP 连接。构造一个 Connection对象，加入 connections 字典中。注意，最后一个参数是 True，它表面这条连接是由客户端主动发起建立的。我们立刻去看 Connection 类的构造
+        self.connections[c] = Connection(self, c, id, True)
+    except socketerror:
+        pass
+
+【Encrypter.py】
+class Connection:
+② def __init__(self, Encoder, connection, id, is_local):
+    self.encoder = Encoder
+    self.connection = connection #这个 connection 是 SingleSocket 对象，就是上面 RawServer::start_connection() 返回的值，它封装了对socket句柄的操作。名字起的不好，容易弄混淆。
+    self.id = id
+    self.locally_initiated = is_local #这个连接是否由本地发起？
+    self.complete = False
+    self.closed = False
+    self.buffer = StringIO()
+    self.next_len = 1
+    ⑦self.next_func = self.read_header_len
+          
+# 如果由本地发起，那么给对方发送BT对等连接的握手消息。
+    ④if self.locally_initiated:
+        connection.write(chr(len(protocol_name)) + protocol_name +
+          (chr(0) * 8) + self.encoder.download_id)
+        if self.id is not None:
+          connection.write(self.encoder.my_id)
+
+      客户端被动接受外来连接
+客户端在与 tracker 通信的时候，已经把自己的 ip 和监听的 port 报告给了 tracker。这样，其它 peers 就可以通过这个 ip 和 port 来连接它了。例如上图中的C，就主动给 A 发一个连接，从C的角度来说，它是“主动连接”，但从A的角度，它是“被动连接”。
+一旦有外来连接请求，就会调用 RawServer::handle_events()，下面是摘录的“Tracker 服务器源码分析之二：RawServer类”中的一段。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+最后调用的是 Handle 的 external_connection_made()，对客户端来说，这个Handle 是 Encoder 类对象。所以，外来连接建立成功后，最后调用的是 Encoder:: external_connection_made()：
+
+③def external_connection_made(self, connection):
+     # 同样是创建一个新的 Connection 类，并加入 connections 字典中。但不同之处在于最后一个参数是 False，表明这个连接是由外部发起的。
+self.connections[connection] = Connection(self, connection, None, False)
+
+      BT对等连接握手：第一步
+
+如果是主动连接，那么一旦连接建立成功之后，就给对方发送一个握手消息，我们折回去看序号为 4 的代码：
+if self.locally_initiated:
+       connection.write(chr(len(protocol_name)) + protocol_name +
+          (chr(0) * 8) + self.encoder.download_id)
+    if self.id is not None:
+       connection.write(self.encoder.my_id)
+
+在《BT协议规范》中，如此描述握手消息：
+对等协议由一个握手开始，后面是循环的消息流，每个消息的前面，都有一个数字来表示消息的长度。握手的过程首先是先发送19，然后发送协议名称“BitTorrent protocol”。19就是“BitTorrent protocol”的长度。
+后续的所有的整数，都采用big-endian 来编码为4个字节。
+在协议名称之后，是8个保留的字节，这些字节当前都设置为0。
+接下来对元文件中的 info 信息，通过 sha1 计算后得到的 hash值，20个字节长。接收消息方，也会对 info 进行一个 hash 运算，如果这两个结果不一样，那么说明双方要下载的文件不一致，会切断连接。
+接下来是20个字节的 peer id。
+可以看到，最后两项就是 Encoder::download_id 和 Encoder::my_id。download_id是如何得来的？它是首先对 torrent 文件中 info 关键字所包含的信息进行 Bencoding 方式的编码（请看《BT协议规范》关于 Bencoding的介绍），然后再通过 sha 函数计算出的 hash（摘要）值。（相关代码都在 download.py 中）。在一次下载过程中，所有的下载者根据 torrent 文件计算出的这个 download_id应该都是一样的，否则就说明不处于同一个下载过程中。
+至于 peer_id，可以看出是可选的。它的计算方式也在 download.py 中：
+myid = 'M' + version.replace('.', '-')
+myid = myid + ('-' * (8 - len(myid))) + b2a_hex(sha(repr(time()) + ' ' + str(getpid())).digest()[-6:])
+seed(myid)
+
+它用来唯一标识一个 peer。
+握手过程已经完成了第一步，还需要第二步，接收到对方的握手消息，握手过程才算完成。所以接下去看在有数据到来的时候，是如何处理的。
+
+      BT对等连接握手：第二步
+当TCP连接上有数据到来的时候， RawServer 会调用到 Encoder:: data_came_in()
+
+【Encoder】
+⑤def data_came_in(self, connection, data):
+    self.connections[connection].data_came_in(data)
+
+进一步调用 Connection::data_came_in()
+
+【Connection】
+⑥def data_came_in(self, s):
+     #这个循环处理用来对BT对等连接中的消息进行分析
+    while True:
+        if self.closed:
+          return
+        i = self.next_len - self.buffer.tell()
+        if i > len(s):
+          self.buffer.write(s)
+          return
+        self.buffer.write(s[:i])
+        s = s[i:]
+        m = self.buffer.getvalue()
+        self.buffer.reset()
+        self.buffer.truncate()
+        try:
+          x = self.next_func(m) #调用消息分析函数，第一个被调用的是read_header_len
+        except:
+          self.next_len, self.next_func = 1, self.read_dead
+          raise
+        if x is None:
+          self.close()
+          return
+        self.next_len, self.next_func = x
+
+⑧def read_header_len(self, s):
+     # 协议的长度是否为 19？
+    if ord(s) != len(protocol_name):
+        return None
+    return len(protocol_name), self.read_header # 下一个处理函数
+
+def read_header(self, s):
+     # 协议名称是否是“BitTorrent protocol”？
+    if s != protocol_name:
+        return None
+    return 8, self.read_reserved # 下一个处理函数
+
+def read_reserved(self, s):
+     #8个保留字节
+    return 20, self.read_download_id # 下一个处理函数
+
+def read_download_id(self, s):
+     对方 download_id 和自己计算出的是否一致？
+    if s != self.encoder.download_id:
+return None
+           检查完 download_id，就认为对方已经通过检查了。
+这里很关键！！！，需要仔细体会。这实际上就是在被动连接情况下，完成握手过程的处理。如果连接不是由本地发起的（被动接收到一个握手消息），那么给对方回一个握手消息。这里的握手消息发送处理和第一步是一样的
+    if not self.locally_initiated:
+        self.connection.write(chr(len(protocol_name)) + protocol_name +
+          (chr(0) * 8) + self.encoder.download_id + self.encoder.my_id)
+    return 20, self.read_peer_id #下一个处理函数
+
+def read_peer_id(self, s):
+# Connection 类用来管理一个 BT 对等连接。在握手完成之后，就用对方的 peer_id 来唯一标识这个 Connection。这个值被保存在 self.id 中。显然，在握手完成之前，这个 id 还是空值。
+    if not self.id:
+                 # 对方的peer_id 可千万别跟自己的一样
+        if s == self.encoder.my_id:
+          return None
+                 唔，如果 peer_id 已经收到过，也不继续下去了
+        for v in self.encoder.connections.values():
+          if s and v.id == s:
+return None
+                 用对方的 peer_id 为 self.id 赋值，唯一标识这个 Connection
+        self.id = s
+        if self.locally_initiated:
+          self.connection.write(self.encoder.my_id)
+        else:
+          self.encoder.everinc = True
+    else:
+                
+                 if s != self.id:
+          return None
+           # OK，握手完成！！！
+    self.complete = True
+    self.encoder.connecter.connection_made(self)
+    return 4, self.read_len #下一个处理函数。从此以后，就是对其它BT对等消息的处理过程了。这是我们下一节分析的问题。
+
+      小结：
+     这篇文章重点分析了BT客户端主动发起连接和被动接收连接的过程，以及在这两种情况下，如何进行BT对等握手的处理。
+     在BT对等握手完成之后，连接的双方就可以互相发送BT对等消息了，这是下一节的内容。
+BitTorrent 协议规范（BT协议集合）二三
+概要
+     上一节我们分析了BT客户端与tracker之间的通信过程。通过与 tracker 的通信，客户端获得了参与下载的其它peers 的列表。有了这些 peers 的信息，客户端就可以主动向它们发起连接，为进一步从它们那里获取所需要的文件片断做好准备。这些连接称为“主动连接”。因为连接的发起方是客户端自己。
+     同时，每个客户端在启动以后，都会监听某个端口，用于接受其它 peers 的连接请求。P2P的核心理念就是“公平、对等”，你向别人有所求（下载），就必须有付出（上传）。客户端在接受外来的连接请求之后，就会产生一个新的连接，称之为“被动连接”，因为连接的发起方是其它 peer。
+     无论是被动连接，还是主动连接，一旦连接建立之后，双方就要进行“BT对等协议”的握手。握手成功之后，双方才可以通过这个连接互相传递消息了。为什么要进行握手了？主要目的是为了防止一些错误的连接。这就好比地下党接头，暗号对上了，彼此才建立信任。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+     在这个示意图中，客户端 A 与 其它 peers B、C、D、E 都建立了连接。通过箭头来表示连接建立的方向。A主动与 B、D、E 建立连接；A被动接收C的连接。同时C与D、E与D、B与D之间也都有连接。这样，所有下载者之间就形成了一个网状的结构。
+     同时，这些下载者都要与 tracker 之间不断通信。
+     无论是被动连接，还是主动连接，一旦在“BT对等握手”成功之后，它们就没有任何区别了。下载通过这个连接进行，上传也是通过这个连接进行。
+    
+     本文重点分析BT客户端如何主动向其它 peers 发起连接；BT客户端如何被动接收其它 peers 的连接请求；以及在连接建立成功之后，如何进行BT对等协议握手的过程。
+
+      客户端主动发起连接
+【Encrypter.py】
+     上一节的最后，我们看到调用 Encoder::start_connection() 来向其它 peer 发起连接。所以，从这里开始看起。
+
+class Encoder:
+# start_connection() 需要两个参数：
+dns：对方的ip、port 的组合。
+id： 对方的 id。每个BT客户端都要创建一个唯一的 id 号，并且把这个 id 号报告给 tracker。Id号唯一标识了一个客户端。Id 号的计算方式在 download.py 中。
+myid = 'M' + version.replace('.', '-')
+myid = myid + ('-' * (8 - len(myid))) + b2a_hex(sha(repr(time()) + ' ' +
+str(getpid())).digest()[-6:])
+seed(myid)
+①def start_connection(self, dns, id):
+    if id:
+        # 如果 id 是自己，不连接
+        if id == self.my_id:
+          return
+        # 如果已经和这个peer建立了连接，也不再建立连接。
+        for v in self.connections.values():
+          if v.id == id:
+return
+           # 如果当前连接数过多，暂时不发起连接
+    if len(self.connections) >= self.max_initiate:
+# self.spares 起到缓存的作用。在当前连接数过多的情况下，把本次要连接的 peer 的 ip、port 缓存起来。一旦当前连接数小于设定值 max_initiate， 则可以从 spares 中取出备用的 peers。
+        if len(self.spares) < self.max_initiate and dns not in self.spares:
+          self.spares.append(dns)
+        return
+    try:
+# 调用 RawServer::start_connection()，发起 TCP 的连接。RawServer的代码分析请参看“服务器源码分析”系列文章，不再赘述
+# 返回的 c 是一个 SingleSocket 对象，它封装了 socket 句柄
+        # 如果出错，抛出 socketerror 异常
+        c = self.raw_server.start_connection(dns)
+# 成功建立 TCP 连接。构造一个 Connection对象，加入 connections 字典中。注意，最后一个参数是 True，它表面这条连接是由客户端主动发起建立的。我们立刻去看 Connection 类的构造
+        self.connections[c] = Connection(self, c, id, True)
+    except socketerror:
+        pass
+
+【Encrypter.py】
+class Connection:
+② def __init__(self, Encoder, connection, id, is_local):
+    self.encoder = Encoder
+    self.connection = connection #这个 connection 是 SingleSocket 对象，就是上面 RawServer::start_connection() 返回的值，它封装了对socket句柄的操作。名字起的不好，容易弄混淆。
+    self.id = id
+    self.locally_initiated = is_local #这个连接是否由本地发起？
+    self.complete = False
+    self.closed = False
+    self.buffer = StringIO()
+    self.next_len = 1
+    ⑦self.next_func = self.read_header_len
+          
+# 如果由本地发起，那么给对方发送BT对等连接的握手消息。
+    ④if self.locally_initiated:
+        connection.write(chr(len(protocol_name)) + protocol_name +
+          (chr(0) * 8) + self.encoder.download_id)
+        if self.id is not None:
+          connection.write(self.encoder.my_id)
+
+      客户端被动接受外来连接
+客户端在与 tracker 通信的时候，已经把自己的 ip 和监听的 port 报告给了 tracker。这样，其它 peers 就可以通过这个 ip 和 port 来连接它了。例如上图中的C，就主动给 A 发一个连接，从C的角度来说，它是“主动连接”，但从A的角度，它是“被动连接”。
+一旦有外来连接请求，就会调用 RawServer::handle_events()，下面是摘录的“Tracker 服务器源码分析之二：RawServer类”中的一段。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+最后调用的是 Handle 的 external_connection_made()，对客户端来说，这个Handle 是 Encoder 类对象。所以，外来连接建立成功后，最后调用的是 Encoder:: external_connection_made()：
+
+③def external_connection_made(self, connection):
+     # 同样是创建一个新的 Connection 类，并加入 connections 字典中。但不同之处在于最后一个参数是 False，表明这个连接是由外部发起的。
+self.connections[connection] = Connection(self, connection, None, False)
+
+      BT对等连接握手：第一步
+
+如果是主动连接，那么一旦连接建立成功之后，就给对方发送一个握手消息，我们折回去看序号为 4 的代码：
+if self.locally_initiated:
+       connection.write(chr(len(protocol_name)) + protocol_name +
+          (chr(0) * 8) + self.encoder.download_id)
+    if self.id is not None:
+       connection.write(self.encoder.my_id)
+
+在《BT协议规范》中，如此描述握手消息：
+对等协议由一个握手开始，后面是循环的消息流，每个消息的前面，都有一个数字来表示消息的长度。握手的过程首先是先发送19，然后发送协议名称“BitTorrent protocol”。19就是“BitTorrent protocol”的长度。
+后续的所有的整数，都采用big-endian 来编码为4个字节。
+在协议名称之后，是8个保留的字节，这些字节当前都设置为0。
+接下来对元文件中的 info 信息，通过 sha1 计算后得到的 hash值，20个字节长。接收消息方，也会对 info 进行一个 hash 运算，如果这两个结果不一样，那么说明双方要下载的文件不一致，会切断连接。
+接下来是20个字节的 peer id。
+可以看到，最后两项就是 Encoder::download_id 和 Encoder::my_id。download_id是如何得来的？它是首先对 torrent 文件中 info 关键字所包含的信息进行 Bencoding 方式的编码（请看《BT协议规范》关于 Bencoding的介绍），然后再通过 sha 函数计算出的 hash（摘要）值。（相关代码都在 download.py 中）。在一次下载过程中，所有的下载者根据 torrent 文件计算出的这个 download_id应该都是一样的，否则就说明不处于同一个下载过程中。
+至于 peer_id，可以看出是可选的。它的计算方式也在 download.py 中：
+myid = 'M' + version.replace('.', '-')
+myid = myid + ('-' * (8 - len(myid))) + b2a_hex(sha(repr(time()) + ' ' + str(getpid())).digest()[-6:])
+seed(myid)
+
+它用来唯一标识一个 peer。
+握手过程已经完成了第一步，还需要第二步，接收到对方的握手消息，握手过程才算完成。所以接下去看在有数据到来的时候，是如何处理的。
+
+      BT对等连接握手：第二步
+当TCP连接上有数据到来的时候， RawServer 会调用到 Encoder:: data_came_in()
+
+【Encoder】
+⑤def data_came_in(self, connection, data):
+    self.connections[connection].data_came_in(data)
+
+进一步调用 Connection::data_came_in()
+
+【Connection】
+⑥def data_came_in(self, s):
+     #这个循环处理用来对BT对等连接中的消息进行分析
+    while True:
+        if self.closed:
+          return
+        i = self.next_len - self.buffer.tell()
+        if i > len(s):
+          self.buffer.write(s)
+          return
+        self.buffer.write(s[:i])
+        s = s[i:]
+        m = self.buffer.getvalue()
+        self.buffer.reset()
+        self.buffer.truncate()
+        try:
+          x = self.next_func(m) #调用消息分析函数，第一个被调用的是read_header_len
+        except:
+          self.next_len, self.next_func = 1, self.read_dead
+          raise
+        if x is None:
+          self.close()
+          return
+        self.next_len, self.next_func = x
+
+⑧def read_header_len(self, s):
+     # 协议的长度是否为 19？
+    if ord(s) != len(protocol_name):
+        return None
+    return len(protocol_name), self.read_header # 下一个处理函数
+
+def read_header(self, s):
+     # 协议名称是否是“BitTorrent protocol”？
+    if s != protocol_name:
+        return None
+    return 8, self.read_reserved # 下一个处理函数
+
+def read_reserved(self, s):
+     #8个保留字节
+    return 20, self.read_download_id # 下一个处理函数
+
+def read_download_id(self, s):
+     对方 download_id 和自己计算出的是否一致？
+    if s != self.encoder.download_id:
+return None
+           检查完 download_id，就认为对方已经通过检查了。
+这里很关键！！！，需要仔细体会。这实际上就是在被动连接情况下，完成握手过程的处理。如果连接不是由本地发起的（被动接收到一个握手消息），那么给对方回一个握手消息。这里的握手消息发送处理和第一步是一样的
+    if not self.locally_initiated:
+        self.connection.write(chr(len(protocol_name)) + protocol_name +
+          (chr(0) * 8) + self.encoder.download_id + self.encoder.my_id)
+    return 20, self.read_peer_id #下一个处理函数
+
+def read_peer_id(self, s):
+# Connection 类用来管理一个 BT 对等连接。在握手完成之后，就用对方的 peer_id 来唯一标识这个 Connection。这个值被保存在 self.id 中。显然，在握手完成之前，这个 id 还是空值。
+    if not self.id:
+                 # 对方的peer_id 可千万别跟自己的一样
+        if s == self.encoder.my_id:
+          return None
+                 唔，如果 peer_id 已经收到过，也不继续下去了
+        for v in self.encoder.connections.values():
+          if s and v.id == s:
+return None
+                 用对方的 peer_id 为 self.id 赋值，唯一标识这个 Connection
+        self.id = s
+        if self.locally_initiated:
+          self.connection.write(self.encoder.my_id)
+        else:
+          self.encoder.everinc = True
+    else:
+                
+                 if s != self.id:
+          return None
+           # OK，握手完成！！！
+    self.complete = True
+    self.encoder.connecter.connection_made(self)
+    return 4, self.read_len #下一个处理函数。从此以后，就是对其它BT对等消息的处理过程了。这是我们下一节分析的问题。
+
+      小结：
+     这篇文章重点分析了BT客户端主动发起连接和被动接收连接的过程，以及在这两种情况下，如何进行BT对等握手的处理。
+     在BT对等握手完成之后，连接的双方就可以互相发送BT对等消息了，这是下一节的内容。
+
+BitTorrent 协议规范（BT协议集合）二四 
+BitTorrent是一个优秀的P2P下载软件，国内又叫它BT（变态）。
+
+BT的主页：http://bitconjurer.org/BitTorrent/index.html
+BT的作者：Bram Cohen，《程序员》杂志2004第3期有对他的介绍文章
+BT所用的语言：python python：一种优秀的动态语言（关于动态语言的介绍，看《程序员》杂志2004年第5期）。
+python的官方网站：www.python.org
+python的一些国内资料：
+www.linuxforum.net 上有专门的 python 讨论区
+http://python.cn   python中文社区
+此外，在清华 bbs 上有一份很好的《python学习笔记》，适合入门
+
+
+在BT的官方网站上，有两篇技术文档，一个是《BT协议规范》，另一个是《Incentives Build Robustness in BitTorrent》，后一篇是讲的 BT 的一些设计思想。要研究 BT的源码，这两份文档几乎是仅有的资料。小马哥将尝试先把这两分文档翻译出来（英文比较烂，有些地方翻译起来很晦涩，请谅解）。
+
+由于BT有自己的协议规范，因此，很多第三方的 BT client 被开发出来，这其中，国人开发的 BitComet 就是在研究了 BT 源码之后，用 c++ 重新开发的，可惜没有任何技术资料。
+BitComep主页：http://www.bitcomet.com/index-zh.htm
