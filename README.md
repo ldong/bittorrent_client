@@ -9,9 +9,9 @@ TODO: write a torrent client using python for class project
 
     BitTorrent Project Breakdown:
 
-    1. parse torrent 10%
+    ~~1. parse torrent 10%~~
 
-    2. hash/handshake 25%
+    ~~2. hash/handshake 25%~~
 
     3. parse message 25%
 
