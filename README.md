@@ -22,6 +22,8 @@ Reference & resources:
     http://zachdex.tumblr.com/post/36792592990/bitttorrent-client-lessons
     https://github.com/zdexter/py-bittorrent
     https://github.com/phsteve/bt
+    https://github.com/nikitan/bencode
+    https://github.com/jcul/bencode
 
     Others:http://www.cs.swarthmore.edu/~aviv/classes/f12/cs43/labs/lab5/lab5.pdf
 

@@ -3,7 +3,7 @@
 
 import os
 import sys
-
+from pprint import pprint as pp
 try:
     from bencode import bencode, bdecode
 except:
@@ -17,12 +17,12 @@ def main(args):
         torrent = args[1]
     parse_torrent(torrent)
 
-def parse_torrent(torrent):
-    with open(torrent, 'r') as f:
-            file_data = f.read()
-    data = list(file_data)
-    for d in data:
-        print d,
+def parse_torrent(torrent_file):
+    with open(torrent_file, 'rb') as t:
+            torrent_data = t.read()
+    torrent = bdecode(torrent_data)
+    pp(torrent)
+    print 'announce: ', torrent['announce']
 
 if __name__ == '__main__':
     main(sys.argv)
