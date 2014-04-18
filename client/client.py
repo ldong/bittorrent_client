@@ -1,4 +1,4 @@
-#!/usr/etc/env python
+#!/usr/bin/env python
 # Author: Lin Dong
 
 import os
