@@ -54,4 +54,8 @@ Reference & resources:
 
     ```
 
-3. `pip install bencode`
+3.
+    ```
+    pip install bencode
+    pip install requests
+    ```
