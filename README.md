@@ -49,6 +49,8 @@ Reference & resources:
     https://github.com/phsteve/bt
     https://github.com/nikitan/bencode
     https://github.com/jcul/bencode
+    http://i-tools.org/torrent
+    http://jonas.nitro.dk/bittorrent/bittorrent-rfc.html
 
     Others:http://www.cs.swarthmore.edu/~aviv/classes/f12/cs43/labs/lab5/lab5.pdf
 

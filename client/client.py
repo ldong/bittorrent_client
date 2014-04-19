@@ -18,7 +18,10 @@ def main(args):
 def connect_torrent_file(torrent):
     # sha1_info = torrent.info_hash
     # print sha1_info
-    response = None
+    # params = torrent.get_request_params()
+    #pp(params)
+    response = torrent.get_response()
+    pp(response)
     return response
 
 
