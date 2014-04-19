@@ -6,7 +6,10 @@ import requests
 from pprint import pprint as pp
 
 import btorrent
-
+'''
+    This bittorrent client only works on single file torrent
+    and only connect to one single peer without resumebility
+'''
 def main(args):
     if len(args) == 1:
         torrent_file = raw_input("Please enter the name of torrent file: ")
@@ -20,10 +23,8 @@ def connect_torrent_file(torrent):
     # print sha1_info
     # params = torrent.get_request_params()
     #pp(params)
-    response = torrent.get_response()
-    pp(response)
-    return response
-
+    torrent.parse_tracker_response()
+    pass
 
 if __name__ == '__main__':
     main(sys.argv)

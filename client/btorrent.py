@@ -38,7 +38,8 @@ class torrent(object):
 
     def _get_port(self):
         ''' Return listening port from client, typically 6881-6889 '''
-        return '6881'
+        _port = '6881'
+        return _port
 
     def _get_uploaded(self):
         return None
@@ -50,7 +51,8 @@ class torrent(object):
         return 100
 
     def _get_compact(self):
-        return 1
+        ''' 1 for compact, 0 for non-compact '''
+        return 0
 
     def _get_event(self):
         ''' States: started, stopped, compleeted '''
@@ -88,17 +90,34 @@ class torrent(object):
 #        params['numwant'] = self._get_numwant()
 #        params['key'] = self._get_key()
 #        params['trackerid'] = self._get_trackerid()
-        pp(params)
+#        pp(params)
         return params
 
-    def get_response(self):
-        print self.announce
+    def _get_response(self):
+        #print self.announce
         r = requests.get(self.announce, params = self._get_request_params())
         r.raise_for_status()
         return bdecode(r.content)
 
     def _get_length(self):
         return self.info['length']
+
+    def parse_tracker_response(self):
+        ''' Parse the response sent from the trackers '''
+        response = self._get_response()
+        #pp(response)
+        # First 4 bytes is IP
+        #_peer_ip = response['peers'][:4]
+        #pp(_peer_ip)
+        # Last 2 bytes is port number
+        #_peer_port = response['peers'][-2:]
+        #pp(_peer_port)
+        #_peer_port = int(_peer_port, 16)
+        #pp(_peer_port)
+        _peer_ip = response['peers'][0]['ip']
+        _peer_id = response['peers'][0]['peer id']
+        _peer_port = response['peers'][0]['port']
+        return response
 
     def __str__(self):
         return str(self.announce)
