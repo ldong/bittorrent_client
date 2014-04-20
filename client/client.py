@@ -23,7 +23,7 @@ def connect_torrent_file(torrent):
     # print sha1_info
     # params = torrent.get_request_params()
     #pp(params)
-    torrent.parse_tracker_response()
+    #torrent.parse_tracker_response()
     torrent.handshake_with_peer()
     pass
 
