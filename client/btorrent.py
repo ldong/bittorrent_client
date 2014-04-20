@@ -1,6 +1,7 @@
 import os
 import hashlib
 import requests
+import socket
 
 from pprint import pprint as pp
 try:
@@ -22,6 +23,7 @@ class torrent(object):
         self.peer_id = self._get_peer_id()
         self.port = self._get_port()
         self.event = self._get_event()
+        self.handshake_state = 0
 
     def _get_info_hash(self):
         ''' Generate info has '''
@@ -51,7 +53,9 @@ class torrent(object):
         return 100
 
     def _get_compact(self):
-        ''' 1 for compact, 0 for non-compact '''
+        ''' 1 for compact, 0 for non-compact
+            For 1, the tracker response msg will be binary model
+            For 0, the tracker response msg will be dictionary model '''
         return 0
 
     def _get_event(self):
@@ -114,10 +118,49 @@ class torrent(object):
         #pp(_peer_port)
         #_peer_port = int(_peer_port, 16)
         #pp(_peer_port)
-        _peer_ip = response['peers'][0]['ip']
-        _peer_id = response['peers'][0]['peer id']
-        _peer_port = response['peers'][0]['port']
+        self._ip_id_ports = []
+        for peer in response['peers']:
+            other_peer_ip = peer['ip']
+            other_peer_id = peer['peer id']
+            other_peer_port = peer['port']
+            ip_id_port = (other_peer_ip, other_peer_id, other_peer_port)
+            self._ip_id_ports.append(ip_id_port)
+            #print ip_id_port
+
         return response
+
+    def handshake_with_peer(self):
+        handshake_message = (chr(19)+"BitTorrent Protocol"+8*chr(0) +
+                self.info_hash + self.peer_id)
+        print len(handshake_message), handshake_message
+
+        data = None
+        while self.handshake_state == 0:
+            for index, ip_id_port in enumerate(self._ip_id_ports):
+                (other_peer_ip, other_peer_id, other_peer_port) = ip_id_port
+                print index, '/', len(self._ip_id_ports),
+                print 'IP: ', other_peer_ip,
+                print 'Port: ', other_peer_port
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(1)
+                    s.connect((str(other_peer_ip), other_peer_port))
+                    s.sendall(handshake_message)
+                    BUFFER_SIZE = 10240
+                    data = s.recv(BUFFER_SIZE)
+                except socket.error, e:
+                    print "Socket exception and errors"
+                except IOError, e:
+                    print "IO Error"
+                if data != None:
+                    self.handshake_state = 1
+                    print 'Data Length: ', len(data), ' Data: ', data
+                else:
+                    print 'Data: Nothing'
+                data = None
+                s.close()
+
+
 
     def __str__(self):
         return str(self.announce)

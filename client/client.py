@@ -24,6 +24,7 @@ def connect_torrent_file(torrent):
     # params = torrent.get_request_params()
     #pp(params)
     torrent.parse_tracker_response()
+    torrent.handshake_with_peer()
     pass
 
 if __name__ == '__main__':
