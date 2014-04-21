@@ -2,6 +2,7 @@ import os
 import hashlib
 import requests
 import socket
+import binascii
 
 from pprint import pprint as pp
 try:
@@ -25,6 +26,7 @@ class torrent(object):
         self.port = self._get_port()
         self.event = self._get_event()
         self.handshake_state = 0
+        self.peer_connection_state = self._get_peer_connection_state()
 
     def _get_info_hash(self):
         ''' Generate info has '''
@@ -64,7 +66,7 @@ class torrent(object):
         return 0
 
     def _get_event(self):
-        ''' States: started, stopped, compleeted '''
+        ''' States: started, stopped, completed '''
         return 'started'
 
     def _get_ip(self):
@@ -123,55 +125,137 @@ class torrent(object):
             self._ip_id_ports.append(ip_id_port)
         return response
 
-    def print_msg_in_hex(line):
-        print len(line), ':'.join(x.encode('hex') for x in line)
-
     def handshake_with_peer(self):
         handshake_message = (chr(19)+"BitTorrent protocol"+8*chr(0) +
                 self.info_hash + self.peer_id)
-        print len(handshake_message), ': ', handshake_message, 'hash: ', \
-            hashlib.sha1(handshake_message).hexdigest()
+        #print len(handshake_message), ': ', handshake_message, 'hash: ', \
+        #    hashlib.sha1(handshake_message).hexdigest()
 
         data = None
-        while self.handshake_state == 0:
-            #self.parse_tracker_response()
-            for index, ip_id_port in enumerate(self._ip_id_ports):
-                (other_peer_ip, other_peer_id, other_peer_port) = ip_id_port
-                print index, '/', len(self._ip_id_ports),
-                print 'IP: ', other_peer_ip,
-                print 'Port: ', other_peer_port
-                try:
-                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    s.settimeout(1)
-                    #s.bind((self.ip, self.port))
-                    s.connect((str(other_peer_ip), other_peer_port))
-                    s.sendall(handshake_message)
-                    BUFFER_SIZE = 10240
-                    data = s.recv(BUFFER_SIZE)
-                except socket.error, e:
-                    print "Socket exception and errors"
-                except IOError, e:
-                    print "IO Error"
-                if data != None and len(data) == 68:
-                    self.handshake_state = 1
-                    print 'Data Length: ', len(data), ' Data: ', data
-                    break
-                s.close()
+#        while self.handshake_state == 0:
+#        ''' keep handshakes until find a seeder '''
+#            #self.parse_tracker_response()
+#            for index, ip_id_port in enumerate(self._ip_id_ports):
+#                (other_peer_ip, other_peer_id, other_peer_port) = ip_id_port
+#                print index, '/', len(self._ip_id_ports),
+#                print 'IP: ', other_peer_ip,
+#                print 'Port: ', other_peer_port
+#                try:
+#                    t = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+#                    t.settimeout(1)
+#                    #s.bind((self.ip, self.port))
+#                    t.connect((str(other_peer_ip), other_peer_port))
+#                    t.sendall(handshake_message)
+#                    BUFFER_SIZE = 10240
+#                    data = s.recv(BUFFER_SIZE)
+#                except socket.error, e:
+#                    print "Socket exception and errors"
+#                except IOError, e:
+#                    print "IO Error"
+#                if data != None and len(data) == 68:
+#                    self.handshake_state = 1
+#                    print 'Data Length: ', len(data), ' Data: ', data
+#                    break
+#                t.close()
 
- #       BUFFER_SIZE = 101068
- #       s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
- #       s.settimeout(10)
- #       s.connect(('127.0.0.1', 52220))
- #       s.sendall(handshake_message)
- #       data = 'Things'
- #       data = s.recv(BUFFER_SIZE)
- #       data = None
- #       s.close()
+        BUFFER_SIZE = 68
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(10)
+        s.connect(('127.0.0.1', 52220))
+        s.sendall(handshake_message)
+        data = s.recv(BUFFER_SIZE)
+        if len(data) == BUFFER_SIZE:
+            print 'Data: ', data
+        else:
+            print 'Bad data'
 
+        BUFFER_SIZE = 32
+        bitfield_buffer = s.recv(BUFFER_SIZE)
+        bitfield_length = int(binascii.hexlify(bitfield_buffer[1:4]), 16) - int('0001', 16)
+        print 'value:', int(binascii.hexlify(bitfield_buffer[1:4]), 16)
+        print int('0001', 16)
+        print 'length: ', bitfield_length
+        bitfield_data = bitfield_buffer[5:5+bitfield_length]
+        print 'bitfield_data: ',
+        print_msg_in_hex(bitfield_data)
 
+        # send choke and not interested on the initialization
+        #s.sendall(self._send_message('choke'))
+        data = s.recv(BUFFER_SIZE)
+        print 'Data: ',
+        print_msg_in_hex(data)
+
+       # prefix = data[0:4]
+       # print 'Prefix: ',
+       # print_msg_in_hex(prefix)
+       # fifth = data[4]
+       # print 'Fifth: ',
+       # print_msg_in_hex(fifth)
+
+       # s.sendall(self._send_message('not interested'))
+       # data = s.recv(BUFFER_SIZE)
+       # #print 'Data: ', print_msg_in_hex(data)
+
+       # prefix = data[0:4]
+       # print 'Prefix: ', print_msg_in_hex(prefix)
+       # fifth = data[4]
+       # print 'Fifth: ',
+       # print_msg_in_hex(fifth)
+
+       # (chocked, interested) = self.peer_connection_state
+
+       # while choked:
+       #     s.sendall()
+       #     (chocked, interested) = self.peer_connection_state
+
+       # s.sendall(self._send_message('interested'))
+       # data = s.recv(BUFFER_SIZE)
+       # print 'Data: ', print_msg_in_hex(data)
+
+        s.close()
+
+    def _send_message(self, msg_state):
+        ''' send message to other peer
+            0 - choke            no payload
+            1 - unchoke          no payload
+            2 - interested       no payload
+            3 - not interested   no payload
+            4 - have
+            5 - bitfield
+            6 - request
+            7 - piece
+            8 - cancel '''
+        msg_length_prefix = {'keep-alive': '0000', 'choke': '00010',
+                            'unchoke': '00011', 'interested': '00012',
+                            'not interested': '00013', 'have': '0005',
+                            'bitfield': '0001', 'request' : '0013',
+                            'piece': '0009', 'cancel': '0013',
+                            'port' : '0003' }
+
+        if(msg_state == 'keep-alive' or
+                msg_state == 'choke' or
+                msg_state == 'unchoke' or
+                msg_state == 'interested' or
+                msg_state == 'not interested'):
+            return msg_length_prefix[msg_state]
+
+    def _parse_message(self):
+        ''' parse message received from other peer '''
+        pass
+
+    def _get_peer_connection_state(self):
+        ''' return a tuple of states: chocked or not and interested or not'''
+        chocked = True
+        interested = False
+        return (chocked, interested)
 
     def __str__(self):
         return str(self.announce)
+
+
+def print_msg_in_hex(line):
+    print len(line), ':'.join(x.encode('hex') for x in line)
+
 
 def parse_torrent(torrent_file):
     with open(torrent_file, 'rb') as t:
