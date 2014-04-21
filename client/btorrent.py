@@ -128,16 +128,11 @@ class torrent(object):
         print len(line), ':'.join(x.encode('hex') for x in line)
 
     def handshake_with_peer(self):
-        handshake_message = "\x13BitTorrent protocol" + \
-            struct.pack("!8x20s20s", self.info_hash, self.peer_id)
+        handshake_message = (chr(19)+"BitTorrent protocol"+8*chr(0) +
+                self.info_hash + self.peer_id)
+        print len(handshake_message), ': ', handshake_message, 'hash: ', \
+            hashlib.sha1(handshake_message).hexdigest()
 
-        #print 'sha1_hash_hex: ', self._get_info_hash_hex()
-        #print 'peer id:', self.peer_id
-
-
-
-        #pp(handshake_message)
-        #print handshake_message
         data = None
 #        while self.handshake_state == 0:
 #            for index, ip_id_port in enumerate(self._ip_id_ports):
