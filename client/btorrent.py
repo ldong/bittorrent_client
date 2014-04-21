@@ -155,16 +155,21 @@ class torrent(object):
         print 'Buff length: ',len(buff)
         pp(buff)
 
-        msg_size = struct.unpack('!i', buff[0:4])[0]
-        if msg_size > 0:
-            msg_buff = buff[4:4+msg_size] # wrap the next n bits into a buff
-            print 'msg_buff: ',
-            print_msg_in_hex(msg_buff)
-            self._extract_msg(msg_buff, msg_size)
+        while len(buff) > 0:
+            msg_size = struct.unpack('!i', buff[0:4])[0]
+            if msg_size > 0:
+                msg_buff = buff[4:4+msg_size] # wrap the next n bits into a buff
+                print 'msg_buff: ',
+                print_msg_in_hex(msg_buff)
+                self._extract_msg(msg_buff, msg_size)
 
-            # trim buffer to the head
-            buff = buff[msg_size:]
+                # trim buffer to the head
+                buff = buff[4+msg_size:]
+            else:
+                print 'msg_size: ', msg_size
+                break
 
+        print 'Done'
 
     def __get_the_buffer_from_socket(self, s):
         ''' Combine each trunk buffer from the socket to a whole,
@@ -224,7 +229,7 @@ class torrent(object):
             pass
         elif msg_id == 4:
             # have
-            piece_index = struct.unpack('!i', msg_buffer[0])[0]
+            piece_index = struct.unpack('!i', msg_buffer[1:])[0]
             print 'have, piece_index: ',
             pp(piece_index)
         elif msg_id == 5:
