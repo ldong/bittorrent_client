@@ -4,7 +4,7 @@ import requests
 import socket
 import binascii
 import struct
-
+import math
 from pprint import pprint as pp
 try:
     from bencode import bencode, bdecode
@@ -20,7 +20,11 @@ class torrent(object):
         self.metainfo = torrent_metainfo
         self.announce = torrent_metainfo.get('announce', None)
         self.info = torrent_metainfo.get('info', None)
-        # pp(self.info)
+        self._file_length = int(self.info.get('length', None))
+        self._piece_length = int(self.info.get('piece length', None))
+        self._number_of_pieces = int(math.ceil(float(self._file_length) / \
+                                float(self._piece_length)))
+
         self.info_hash = self._get_info_hash()
         self.peer_id = self._get_peer_id()
         self.ip = self._get_ip()
@@ -58,7 +62,7 @@ class torrent(object):
         return None
 
     def _get_left(self):
-        return 100
+        return self._file_length
 
     def _get_compact(self):
         ''' 1 for compact, 0 for non-compact
@@ -72,7 +76,9 @@ class torrent(object):
 
     def _get_ip(self):
         ''' Return ip of the localhost '''
-        return str([(s.connect(('8.8.8.8', 80)), s.getsockname()[0], s.close()) for s in [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1])
+        return str([(s.connect(('8.8.8.8', 80)), s.getsockname()[0], \
+            s.close()) for s in \
+            [socket.socket(socket.AF_INET, socket.SOCK_DGRAM)]][0][1])
         return None
 
     def _get_numwant(self):
@@ -93,8 +99,7 @@ class torrent(object):
         params['port'] = self.port
         params['uploaded'] = self._get_uploaded()
         params['downloaded'] = self._get_downloaded()
-        # params['left'] = self._get_left()
-        params['left'] = self._get_length()
+        params['left'] = self._get_left()
         params['compact'] = self._get_compact()
         params['event'] = self.event
 
@@ -108,11 +113,12 @@ class torrent(object):
     def _get_response(self):
         #print self.announce
         r = requests.get(self.announce, params = self._get_request_params())
+        print 'r: \n', r
         r.raise_for_status()
         return bdecode(r.content)
 
-    def _get_length(self):
-        return self.info['length']
+    def __get_number_of_piece(self):
+        return self._number_of_pieces
 
     def _parse_tracker_response(self):
         ''' Parse the response sent from the trackers '''
@@ -135,73 +141,83 @@ class torrent(object):
         self._exchange_msg(s)
         s.close()
 
+    def __get_length_of_piece(self):
+        return self.__get_number_of_piece
+
     def _exchange_msg(self, s):
         ''' Exchange msg from client to other peer'''
         BUFFER_SIZE = 32
         msg_buffer = s.recv(BUFFER_SIZE)
 
         #prefix, = struct.unpack('!4s', msg_buffer[0:4])
-        print len(struct.unpack('!ic', msg_buffer[0:5]))
+        # print len(struct.unpack('!ic', msg_buffer[0:5]))
+
         prefix, msg_id = struct.unpack('!ic', msg_buffer[0:5])
         print 'prefix', prefix
+        print 'msg_id',
         pp(msg_id)
 
-        print 'len of prefix', len(prefix)
-        prefix_hex = str(binascii.hexlify(prefix))
-        print prefix_hex
+        # while buffer is not empty
+        while len(msg_buffer) > 0:
+            # while buffer is not parsed
+            while len(msg_buffer) > 0:
+                curr = 0 # current index of the buffer
+                print 'prefix', prefix
+                print 'msg_id',
+                pp(msg_id)
 
-        for i in '0001':
-            print 'Hex: ', hex(int(i)),
-        print_msg_in_hex(prefix)
-        #print_msg_in_hex('1')
-        #while msg_buffer != 0:
-        #    prefix = struct.unpack('!4i', msg_buffer[1:4])
-        #    print prefix
-        #    bitfield_length = int(binascii.hexlify(bitfield_buffer[0:4]), 16) - int('0001', 16)
-        #    print 'value:', int(binascii.hexlify(bitfield_buffer[0:4]), 16)
-        #    print int('0001', 16)
-        #    print 'length: ', bitfield_length
-        #    bitfield_data = bitfield_buffer[5:5+bitfield_length]
-        #    print 'bitfield_data: ',
-        #    print_msg_in_hex(bitfield_data)
-        #    buffer = s.recv(BUFFER_SIZE)
+                if ord(msg_id) == int('0'):
+                    # choke
+                    pass
+                elif ord(msg_id) == int('1') and prefix == 1:
+                    # unchoke
+                    pass
+                elif ord(msg_id) == int('2') and prefix == 1:
+                    # interested
+                    pass
+                elif ord(msg_id) == int('3') and prefix == 1:
+                    # not interested
+                    pass
+                elif ord(msg_id) == int('4') and prefix == 1:
+                    # have
+                    piece_index = struct.unpack('!i', msg_buffer[5:9])
+                    print 'have, piece_index: ',
+                    pp(piece_index)
+                    curr = 5 + 4
+                elif ord(msg_id) == int('5'):
+                    # bitfield
+                    print 'This is bitfield'
+                    bitfield_length = prefix - 1
+                    bitfield_payload = struct.unpack('!'+str(bitfield_length)+'s',
+                            msg_buffer[5:5+int(bitfield_length)])
+                    print 'bitfield length: ', bitfield_length
+                    print 'bitfield payload: ', bitfield_payload
+                    curr = 5 + bitfield_length
+                elif ord(msg_id) == int('6'):
+                    # request
+                    pass
+                elif ord(msg_id) == int('7'):
+                    # piece
+                    pass
+                elif ord(msg_id) == int('8'):
+                    # cancel
+                    pass
+                elif ord(msg_id) == int('9'):
+                    # port
+                    pass
+                else:
+                    pass
+                # trim/delete the bytes that are already parsed
+                msg_buffer = msg_buffer[curr:]
+                prefix, msg_id = struct.unpack('!ic', msg_buffer[0:5])
 
-        # send choke and not interested on the initialization
-        #s.sendall(self._send_message('choke'))
-        data = s.recv(BUFFER_SIZE)
-        print 'Data: ',
-        print_msg_in_hex(data)
-
-       # prefix = data[0:4]
-       # print 'Prefix: ',
-       # print_msg_in_hex(prefix)
-       # fifth = data[4]
-       # print 'Fifth: ',
-       # print_msg_in_hex(fifth)
-
-       # s.sendall(self._send_message('not interested'))
-       # data = s.recv(BUFFER_SIZE)
-       # #print 'Data: ', print_msg_in_hex(data)
-
-       # prefix = data[0:4]
-       # print 'Prefix: ', print_msg_in_hex(prefix)
-       # fifth = data[4]
-       # print 'Fifth: ',
-       # print_msg_in_hex(fifth)
-
-       # (chocked, interested) = self.peer_connection_state
-
-       # while choked:
-       #     s.sendall()
-       #     (chocked, interested) = self.peer_connection_state
-
-       # s.sendall(self._send_message('interested'))
-       # data = s.recv(BUFFER_SIZE)
-       # print 'Data: ', print_msg_in_hex(data)
-
-
+            # extract info from next buffer
+            msg_buffer = s.recv(BUFFER_SIZE)
+            # prefix, msg_id = struct.unpack('!ic', msg_buffer[0:5])
+            print_msg_in_hex(msg_buffer)
 
     def _handshake_with_peer(self, s):
+        ''' transmit a handshake to other peer '''
         handshake_message = (chr(19)+"BitTorrent protocol"+8*chr(0) +
                 self.info_hash + self.peer_id)
         #print len(handshake_message), ': ', handshake_message, 'hash: ', \
