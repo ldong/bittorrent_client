@@ -140,10 +140,19 @@ class torrent(object):
         BUFFER_SIZE = 32
         msg_buffer = s.recv(BUFFER_SIZE)
 
-        prefix, = struct.unpack('!4s', msg_buffer[0:4])
+        #prefix, = struct.unpack('!4s', msg_buffer[0:4])
+        print len(struct.unpack('!ic', msg_buffer[0:5]))
+        prefix, msg_id = struct.unpack('!ic', msg_buffer[0:5])
+        print 'prefix', prefix
+        pp(msg_id)
+
+        print 'len of prefix', len(prefix)
+        prefix_hex = str(binascii.hexlify(prefix))
+        print prefix_hex
+
+        for i in '0001':
+            print 'Hex: ', hex(int(i)),
         print_msg_in_hex(prefix)
-        for p in prefix:
-            print 'p:', int(p, 16)
         #print_msg_in_hex('1')
         #while msg_buffer != 0:
         #    prefix = struct.unpack('!4i', msg_buffer[1:4])
