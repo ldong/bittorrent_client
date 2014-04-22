@@ -16,6 +16,7 @@ except:
     sys.exit()
 
 BLOCK_LENGTH = 16384
+AUTHOR_NAME = '__LIN_DONG__'
 
 class torrent(object):
     ''' Torrent class'''
@@ -53,6 +54,14 @@ class torrent(object):
         self._peer_pieces_index_from_bitfield = {}
         self._peer_pieces_index_from_haves = {}
 
+        print '# of blocks for each piece', self._NUMBER_OF_BLOCKS_FOR_EACH_PIECE
+        print '# of blocks for last piece', self._NUMBER_OF_BLOCKS_FOR_LAST_PIECE
+        print '# of pieces for the file', self._NUMBER_OF_PIECES
+        print 'file length', self._FILE_LENGTH
+        print 'piece length', self._PIECE_LENGTH
+        print 'piece length last', self._PIECE_LENGTH_OF_LAST
+
+
     def _get_info_hash(self):
         ''' Generate info has '''
         sha1_info = hashlib.sha1(bencode(self.info))
@@ -85,9 +94,10 @@ class torrent(object):
         return self._FILE_LENGTH
 
     def _get_compact(self):
-        ''' 1 for compact, 0 for non-compact
-            For 1, the tracker response msg will be binary model
-            For 0, the tracker response msg will be dictionary model '''
+        '''1 for compact, 0 for non-compact
+        For 1, the tracker response msg will be binary model
+        For 0, the tracker response msg will be dictionary model
+        '''
         return 0
 
     def _get_event(self):
@@ -179,35 +189,81 @@ class torrent(object):
             # print 'else: current state: choked:', choked, 'interested:', interested
             # self._set_peer_connection_state(choked, interested)
 
-        self._send_message('request', s)
-        self._unpack_msg(s)
-
+        self._download_file(s)
         # final step
         s.close()
+
+    def _download_file(self, s=None):
+        ''' start to download the whole file, split into pieces '''
+        for piece_index, (downloaded, (start_block_index, offset, left)) in \
+                self._peer_pieces_index_from_bitfield.iteritems():
+            if not downloaded:
+                self.__download_piece(s, piece_index, (start_block_index, offset, left))
+
+    def __download_piece(self, s=None, piece_index=0, block=None):
+        ''' start to download each piece, split into blocks '''
+        print 'download pieces: ', piece_index
+        start_block_index, offset, left = block
+        buff = ''
+        while start_block_index < self._NUMBER_OF_BLOCKS_FOR_EACH_PIECE:
+            buff += self.__download_block(s, *block)
+
+        self.__update_piece_info(start_block_index, True, *block)
+
+    def __download_block(self, s=None, piece_index = 0, block_index=0, \
+            offset=0, left=BLOCK_LENGTH):
+        ''' start to download each block '''
+        print 'download blocks'
+        self._send_message('request', s)
+        buff = self._unpack_msg(s)
+        # if buff != None:
+            # offset, left = 
+            # self.__update_block_info(piece_index, block_index+1)
+        return buff
+
+    def __update_piece_info(self, piece_index = None, downloaded = None,
+            start_block_index = None, offset = None, left = None):
+        ''' update the piece information in bitfield '''
+        self._peer_pieces_index_from_bitfield[index] = (downloaded, \
+        (start_block_index, offset, left))
+
+    def __update_block_info(self, piece_index = None, start_block_index = None,\
+            offset = None, left = None):
+        ''' update the piece info on block level in bitfield '''
+        self._peer_pieces_index_from_bitfield[index] = (downloaded, \
+        (start_block_index, offset, left))
+
+    def _save_piece_to_file(self, prefix = AUTHOR_NAME):
+        ''' save pieces into file'''
+        pass
 
     def __get_length_of_piece(self):
         ''' return the length of piece '''
         return self.__get_number_of_piece
 
     def _unpack_msg(self, s):
-        ''' Unpack the message sent from other peer'''
+        ''' Unpack the message sent from other peer
+        return the downloaded block data if necessary
+        '''
         buff = self.__get_the_buffer_from_socket(s)
         # print 'Buff length: ',len(buff)
         # pp(buff)
 
+        block_data = None
         while len(buff) > 0:
             msg_size = struct.unpack('!i', buff[0:4])[0]
             if msg_size > 0:
                 msg_buff = buff[4:4+msg_size] # wrap the next n bits into a buff
                 # print 'msg_buff: ',
                 # print_msg_in_hex(msg_buff)
-                self._extract_msg(msg_buff, msg_size)
+                block_data = self._extract_msg(msg_buff, msg_size)
 
                 # trim buffer to the head
                 buff = buff[4+msg_size:]
             else:
                 print 'msg_size: ', msg_size
                 break
+        return block_data
 
     def __get_the_buffer_from_socket(self, s):
         ''' Combine each trunk buffer from the socket to a whole,
@@ -249,9 +305,11 @@ class torrent(object):
         return ''.join(total_data)
 
     def _extract_msg(self, msg_buffer, prefix):
-        ''' extract msg from the whole buffer '''
+        ''' extract msg from the whole buffer
+        return recv block data if necessary
+        '''
         msg_id = ord(struct.unpack('!c', msg_buffer[0])[0])
-
+        block_data = None
         if msg_id == 0:
             # choke
             print 'set to choke'
@@ -290,18 +348,20 @@ class torrent(object):
                 if exist:
                     if index == self._NUMBER_OF_PIECES - 1:
                         left = self._PIECE_LENGTH_OF_LAST
+                    else:
+                        left = self._PIECE_LENGTH
                     start_block_index = 0
                     offset = 0
-                    left = self._PIECE_LENGTH
                     self._peer_pieces_index_from_bitfield[index] = (False, \
                             (start_block_index, offset, left))
-
+                    # update piece index and block index, offset and left
 
         elif msg_id == 6:
             # request
             print 'recv request'
             pass
         elif msg_id == 7:
+            # piece
             print 'recv piece'
             # print 'prefix:', prefix
             block_length = prefix - 9
@@ -309,9 +369,12 @@ class torrent(object):
             # print 'from: ', 8+block_length
             index, begin, block = struct.unpack('!2i'+str(block_length)+'s',
                     msg_buffer[1:9+block_length])
+            is_downloaded, (start_block_index, offset, left) = \
+                    self._peer_pieces_index_from_bitfield[index]
+            print 'Files:', is_downloaded, (start_block_index, offset, left)
+            # return block here
+            block_data = block
 
-            # piece
-            pass
         elif msg_id == 8:
             # cancel
             pass
@@ -320,6 +383,7 @@ class torrent(object):
             pass
         else:
             pass
+        return block_data
 
     def _handshake_with_peer(self, s):
         ''' transmit a handshake to other peer '''
@@ -359,7 +423,7 @@ class torrent(object):
         s.sendall(handshake_message)
         recv_data = s.recv(BUFFER_SIZE)
 
-    def _send_message(self, msg_state, s):
+    def _send_message(self, msg_state, s, block=()):
         ''' send message to other peer
             0 - choke            no payload
             1 - unchoke          no payload
@@ -413,9 +477,6 @@ class torrent(object):
 
     def __str__(self):
         return str(self.announce)
-
-def _save_to_file(buff, name = 'ldong_'):
-    pass
 
 def _list_of_bits_(target):
     return [__is_this_index_bit_set(target) for i in xrange(target.bit_length())]
