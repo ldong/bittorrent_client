@@ -559,6 +559,8 @@ def combine_pieces_to_a_file(file_list, file_name):
         for fname in file_list:
             with open(fname) as infile:
                 outfile.write(infile.read())
+                os.remove(fname) # clean up after combined
+
 
 def _list_of_bits_(target):
     return [__is_this_index_bit_set(target) for i in xrange(target.bit_length())]
