@@ -17,6 +17,9 @@ except:
 
 BLOCK_LENGTH = 16384
 AUTHOR_NAME = '__LIN_DONG__'
+IP = '127.0.0.1'
+PORT =52220
+LOCAL =True
 
 class torrent(object):
     ''' Torrent class'''
@@ -45,6 +48,8 @@ class torrent(object):
 
         self._NUMBER_OF_BLOCKS_FOR_LAST_PIECE = \
          int(math.ceil(float(self._PIECE_LENGTH_OF_LAST)/float(BLOCK_LENGTH)))
+        self._LAST_PIECE_BLOCK = self._PIECE_LENGTH_OF_LAST % BLOCK_LENGTH
+        print '_last_piece_block', self._LAST_PIECE_BLOCK
 
         self.info_hash = self._get_info_hash()
         self.peer_id = self._get_peer_id()
@@ -164,7 +169,7 @@ class torrent(object):
             self._ip_id_ports.append(ip_id_port)
         return response
 
-    def connect_to_peer(self, ip= '127.0.0.1', port = 52220):
+    def connect_to_peer(self, ip= IP, port = PORT):
         self._parse_tracker_response()
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(10)
@@ -191,22 +196,25 @@ class torrent(object):
         # else:
             # print 'else: current state: choked:', choked, 'interested:', interested
             # self._set_peer_connection_state(choked, interested)
-
         self._download_file(s)
         # final step
         s.close()
 
     def _download_file(self, s=None):
         ''' start to download the whole file, split into pieces '''
+        print 'download file'
         for piece_index, downloaded in \
                 self._peer_pieces_index_from_bitfield.iteritems():
             if not downloaded:
+                print 'start to download file index:', piece_index
                 piece_buff = self.__download_piece(s, piece_index, 0)
                 save_piece_to_file(piece_buff, piece_index)
 
+        print ' ---finished download---'
+
     def __download_piece(self, s=None, piece_index=0, curr_block_index=0):
         ''' start to download each piece, split into blocks '''
-        print 'download pieces: ', piece_index
+        print 'download pieces: ', piece_index, '/', self._NUMBER_OF_PIECES
         print 'start block index:', curr_block_index
         piece_buff = ''
 
@@ -238,7 +246,7 @@ class torrent(object):
         ''' start to download each block '''
         print 'download blocks:',
         self._send_message('request', s, (piece_index, offset, left))
-        print 'piece_index, offset, left:', piece_index, offset, left
+        print("piece_index: %d, offset: %d, left: %d", piece_index, offset, left)
         block_buff = self._unpack_msg(s)
         if block_buff != None:
             return block_buff
@@ -372,9 +380,15 @@ class torrent(object):
             # print 'bitfield length: ', bitfield_length
             # print 'bitfield payload: ', bitfield_payload
 
-            for (index, exist) in enumerate(BitArray(bytes= bitfield_payload)):
-                if exist:
-                    self._peer_pieces_index_from_bitfield[index] = False
+            if LOCAL:
+                # for idx in xrange(self._NUMBER_OF_PIECES):
+                    # self._peer_pieces_index_from_bitfield[idx] = False
+                    self._peer_pieces_index_from_bitfield[2] = False
+            else:
+                for (index, exist) in enumerate(BitArray(bytes= bitfield_payload)):
+                    if exist:
+                        self._peer_pieces_index_from_bitfield[index] = False
+
 
         elif msg_id == 6:
             # request
@@ -477,8 +491,14 @@ class torrent(object):
             if block != None:
                 (piece_index, offset, left) = block
                 print 'offset:', offset
-            msg = struct.pack('!ib3i', 13, 6, piece_index, offset, BLOCK_LENGTH)
-            pp(msg)
+                download_length = BLOCK_LENGTH
+                # if the last piece and the last block
+                if (piece_index == self._NUMBER_OF_PIECES-1):
+                    if BLOCK_LENGTH > self._PIECE_LENGTH_OF_LAST - offset:
+                        download_length = self._PIECE_LENGTH_OF_LAST - offset
+            print 'download length', download_length
+            msg = struct.pack('!ib3i', 13, 6, piece_index, offset, download_length)
+            # pp(msg)
             print_msg_in_hex(msg)
             s.sendall(msg)
 
@@ -498,7 +518,7 @@ class torrent(object):
     def __str__(self):
         return str(self.announce)
 
-def verify_file_with_hash(hash_code):
+def verify_file_with_hash(f, hash_code):
     pass
 
 
