@@ -212,7 +212,7 @@ class torrent(object):
                 piece_buff = self.__download_piece(s, piece_index, 0)
                 a_sha1 = print_msg_in_hex(self.info['pieces'])
                 b_sha1 = print_msg_in_hex(sha1_of_the_buffer(piece_buff))
-                if a_sha1[1].find(b_sha1[1]):
+                if a_sha1[1].find(b_sha1[1]) != -1:
                     print 'verified: ', b_sha1
                     file_list.append((save_piece_to_file(piece_buff, piece_index),\
                         sha1_of_the_buffer(piece_buff)))
@@ -221,7 +221,7 @@ class torrent(object):
                     print 'a_sha1'
                     print a_sha1
                     pp(a_sha1)
-                    print 'a_sha1'
+                    print 'b_sha1'
                     print b_sha1
                     pp(b_sha1)
 
@@ -399,9 +399,9 @@ class torrent(object):
             # print 'bitfield payload: ', bitfield_payload
 
             if LOCAL:
-                # for idx in xrange(self._NUMBER_OF_PIECES):
-                    # self._peer_pieces_index_from_bitfield[idx] = False
-                self._peer_pieces_index_from_bitfield[2] = False
+                for idx in xrange(self._NUMBER_OF_PIECES):
+                    self._peer_pieces_index_from_bitfield[idx] = False
+                # self._peer_pieces_index_from_bitfield[0] = False
             else:
                 for (index, exist) in enumerate(BitArray(bytes= bitfield_payload)):
                     if exist:
