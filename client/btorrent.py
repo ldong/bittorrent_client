@@ -209,7 +209,6 @@ class torrent(object):
         print 'download pieces: ', piece_index
         print 'start block index:', curr_block_index
         piece_buff = ''
-        piece_offset = self._PIECE_LENGTH * piece_index
 
         if piece_index == self._NUMBER_OF_PIECES-1:
             print 'download the last piece'
@@ -222,8 +221,7 @@ class torrent(object):
         while curr_block_index < total_blocks:
             print 'curr block index:', curr_block_index
             # calculate offset
-            block_offset = curr_block_index * BLOCK_LENGTH
-            offset = piece_offset + block_offset
+            offset = curr_block_index * BLOCK_LENGTH
 
             new_piece = self.__download_block(s, piece_index, offset)
             if new_piece != None:
@@ -240,6 +238,7 @@ class torrent(object):
         ''' start to download each block '''
         print 'download blocks:',
         self._send_message('request', s, (piece_index, offset, left))
+        print 'piece_index, offset, left:', piece_index, offset, left
         block_buff = self._unpack_msg(s)
         if block_buff != None:
             return block_buff
