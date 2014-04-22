@@ -32,6 +32,7 @@ class torrent(object):
         # print 'info: '
         # pp(self.info)
         print 'pieces info: '
+        print type(self.info['pieces'])
         print_msg_in_hex(self.info['pieces'])
         time.sleep(1)
         self._FILE_LENGTH = int(self.info.get('length', None))
@@ -209,8 +210,20 @@ class torrent(object):
             if not downloaded:
                 print 'start to download file index:', piece_index
                 piece_buff = self.__download_piece(s, piece_index, 0)
-                file_list.append((save_piece_to_file(piece_buff, piece_index),\
+                a_sha1 = print_msg_in_hex(self.info['pieces'])
+                b_sha1 = print_msg_in_hex(sha1_of_the_buffer(piece_buff))
+                if a_sha1[1].find(b_sha1[1]):
+                    print 'verified: ', b_sha1
+                    file_list.append((save_piece_to_file(piece_buff, piece_index),\
                         sha1_of_the_buffer(piece_buff)))
+                else:
+                    print 'somethings up'
+                    print 'a_sha1'
+                    print a_sha1
+                    pp(a_sha1)
+                    print 'a_sha1'
+                    print b_sha1
+                    pp(b_sha1)
 
         combine_pieces_to_a_file([f for f, sha1 in file_list], self.info['name'])
         print ' ---finished download---'
@@ -386,9 +399,9 @@ class torrent(object):
             # print 'bitfield payload: ', bitfield_payload
 
             if LOCAL:
-                for idx in xrange(self._NUMBER_OF_PIECES):
-                    self._peer_pieces_index_from_bitfield[idx] = False
-                    # self._peer_pieces_index_from_bitfield[2] = False
+                # for idx in xrange(self._NUMBER_OF_PIECES):
+                    # self._peer_pieces_index_from_bitfield[idx] = False
+                self._peer_pieces_index_from_bitfield[2] = False
             else:
                 for (index, exist) in enumerate(BitArray(bytes= bitfield_payload)):
                     if exist:
@@ -526,9 +539,10 @@ class torrent(object):
 def sha1_of_the_buffer(buff):
     return hashlib.sha1(buff).digest()
 
-def verify_file_with_hash(file1_sha1, file2_sha1):
-    ''' return if two sha1 are the same'''
-    return file1_sha1 == file2_sha1
+def verify_file_with_hash(small, large):
+    ''' return if smalls sha1 is in larges'''
+    # return large.lower().find(small.lower()) != -1
+    return small == large
 
 def save_piece_to_file(piece_buff, piece_index, prefix=AUTHOR_NAME):
     '''save piece into individual file
