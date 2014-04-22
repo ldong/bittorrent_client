@@ -6,6 +6,7 @@ import binascii
 import struct
 import math
 import time
+from bitstring import BitArray
 
 from pprint import pprint as pp
 try:
@@ -28,7 +29,7 @@ class torrent(object):
         self._piece_length = int(self.info.get('piece length', None))
         self._number_of_pieces = int(math.ceil(float(self._file_length) / \
                                 float(self._piece_length)))
-        print '# of pieces: ', self._number_of_pieces
+        # print '# of pieces: ', self._number_of_pieces
 
         self.info_hash = self._get_info_hash()
         self.peer_id = self._get_peer_id()
@@ -37,6 +38,9 @@ class torrent(object):
         self.event = self._get_event()
         self.handshake_state = 0
         self.peer_connection_state = self._get_peer_connection_state()
+
+        self._peer_pieces_index_from_bitfield = []
+        self._peer_pieces_index_from_haves = []
 
     def _get_info_hash(self):
         ''' Generate info has '''
@@ -152,15 +156,15 @@ class torrent(object):
     def _exchange_msg(self, s):
         ''' Exchange message from client to other peer'''
         buff = self.__get_the_buffer_from_socket(s)
-        print 'Buff length: ',len(buff)
-        pp(buff)
+        # print 'Buff length: ',len(buff)
+        # pp(buff)
 
         while len(buff) > 0:
             msg_size = struct.unpack('!i', buff[0:4])[0]
             if msg_size > 0:
                 msg_buff = buff[4:4+msg_size] # wrap the next n bits into a buff
-                print 'msg_buff: ',
-                print_msg_in_hex(msg_buff)
+                # print 'msg_buff: ',
+                # print_msg_in_hex(msg_buff)
                 self._extract_msg(msg_buff, msg_size)
 
                 # trim buffer to the head
@@ -169,7 +173,12 @@ class torrent(object):
                 print 'msg_size: ', msg_size
                 break
 
-        print 'Done'
+        # print 'self._peer_pieces_index_from_bitfield: ',
+        # pp(self._peer_pieces_index_from_bitfield)
+        # print 'self._peer_pieces_index_from_haves: '
+        # print 'length: ', len(self._peer_pieces_index_from_haves)
+        # pp(self._peer_pieces_index_from_haves)
+        # print ' -- End of exchange msg --'
 
     def __get_the_buffer_from_socket(self, s):
         ''' Combine each trunk buffer from the socket to a whole,
@@ -230,15 +239,19 @@ class torrent(object):
         elif msg_id == 4:
             # have
             piece_index = struct.unpack('!i', msg_buffer[1:])[0]
-            print 'have, piece_index: ',
-            pp(piece_index)
+            self._peer_pieces_index_from_haves.append(piece_index)
+            # print 'have, piece_index: ',
+            # pp(piece_index)
         elif msg_id == 5:
             # bitfield
             bitfield_length = prefix - 1
             bitfield_payload = struct.unpack('!'+str(bitfield_length)+'s',
-                    msg_buffer[1:1+int(bitfield_length)])
-            print 'bitfield length: ', bitfield_length
-            print 'bitfield payload: ', bitfield_payload
+                    msg_buffer[1:1+int(bitfield_length)])[0]
+            self._peer_pieces_index_from_bitfield = [index for (index, exist) \
+                    in enumerate(BitArray(bytes= bitfield_payload)) if exist]
+
+            # print 'bitfield length: ', bitfield_length
+            # print 'bitfield payload: ', bitfield_payload
         elif msg_id == 6:
             # request
             pass
@@ -292,11 +305,12 @@ class torrent(object):
 
         BUFFER_SIZE = 68
         s.sendall(handshake_message)
-        data = s.recv(BUFFER_SIZE)
-        if len(data) == BUFFER_SIZE:
-            print 'Data: ', data
+        recv_data = s.recv(BUFFER_SIZE)
+        # print data
+        if len(recv_data) == BUFFER_SIZE:
+            print 'Recv data: ', recv_data
         else:
-            print 'Bad data'
+            print 'Recv data: bad data'
 
     def _send_message(self, msg_state):
         ''' send message to other peer
@@ -336,6 +350,11 @@ class torrent(object):
     def __str__(self):
         return str(self.announce)
 
+def _list_of_bits_(target):
+    return [__is_this_index_bit_set(target) for i in xrange(target.bit_length())]
+
+def __is_this_index_bit_set(target, index):
+    return 1<<index & target >0
 
 def print_msg_in_hex(line):
     msg = len(line), ':'.join(x.encode('hex') for x in line)
