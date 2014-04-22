@@ -27,11 +27,20 @@ class torrent(object):
         self.info = torrent_metainfo.get('info', None)
         # print 'info: '
         # pp(self.info)
-        self._file_length = int(self.info.get('length', None))
-        self._piece_length = int(self.info.get('piece length', None))
-        self._number_of_pieces = int(math.ceil(float(self._file_length) / \
-                                float(self._piece_length)))
-        # print '# of pieces: ', self._number_of_pieces
+        self._FILE_LENGTH = int(self.info.get('length', None))
+        self._PIECE_LENGTH = int(self.info.get('piece length', None))
+        self._NUMBER_OF_PIECES = int(math.ceil(float(self._FILE_LENGTH) / \
+                                float(self._PIECE_LENGTH)))
+        # print '# of pieces: ', self._NUMBER_OF_PIECES
+
+        # record the length of the last piece manually
+        self._PIECE_LENGTH_OF_LAST = self._FILE_LENGTH % self._PIECE_LENGTH
+        # print 'last piece: ', self._PIECE_LENGTH_OF_LAST
+        self._NUMBER_OF_BLOCKS_FOR_EACH_PIECE = \
+         int(math.ceil(float(self._PIECE_LENGTH)/float(BLOCK_LENGTH)))
+
+        self._NUMBER_OF_BLOCKS_FOR_LAST_PIECE = \
+         int(math.ceil(float(self._PIECE_LENGTH_OF_LAST)/float(BLOCK_LENGTH)))
 
         self.info_hash = self._get_info_hash()
         self.peer_id = self._get_peer_id()
@@ -73,7 +82,7 @@ class torrent(object):
         return None
 
     def _get_left(self):
-        return self._file_length
+        return self._FILE_LENGTH
 
     def _get_compact(self):
         ''' 1 for compact, 0 for non-compact
@@ -128,7 +137,7 @@ class torrent(object):
         return bdecode(r.content)
 
     def __get_number_of_piece(self):
-        return self._number_of_pieces
+        return self._NUMBER_OF_PIECES
 
     def _parse_tracker_response(self):
         ''' Parse the response sent from the trackers '''
@@ -151,8 +160,8 @@ class torrent(object):
         self._unpack_msg(s)
 
         # starting state
-        # self._send_message('choke', s)
-        # self._send_message('not interested', s)
+        self._send_message('choke', s)
+        self._send_message('not interested', s)
         choked = True
         interested = False
         self._set_peer_connection_state(choked, interested)
@@ -274,11 +283,20 @@ class torrent(object):
             bitfield_length = prefix - 1
             bitfield_payload = struct.unpack('!'+str(bitfield_length)+'s',
                     msg_buffer[1:1+bitfield_length])[0]
-            self._peer_pieces_index_from_bitfield = {index: False for (index, exist) \
-                    in enumerate(BitArray(bytes= bitfield_payload)) if exist}
-
             # print 'bitfield length: ', bitfield_length
             # print 'bitfield payload: ', bitfield_payload
+
+            for (index, exist) in enumerate(BitArray(bytes= bitfield_payload)):
+                if exist:
+                    if index == self._NUMBER_OF_PIECES - 1:
+                        left = self._PIECE_LENGTH_OF_LAST
+                    start_block_index = 0
+                    offset = 0
+                    left = self._PIECE_LENGTH
+                    self._peer_pieces_index_from_bitfield[index] = (False, \
+                            (start_block_index, offset, left))
+
+
         elif msg_id == 6:
             # request
             print 'recv request'
@@ -370,7 +388,7 @@ class torrent(object):
             # pp(self._peer_pieces_index_from_bitfield)
             for piece_index, downloaded in\
                     self._peer_pieces_index_from_bitfield.iteritems():
-                if not downloaded:
+                if not downloaded[0]:
                     print 'piece index:', piece_index
                     break
 
