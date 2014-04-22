@@ -13,11 +13,11 @@ TODO: write a torrent client using python for class project
 
     ~~2. hash/handshake 25%~~
 
-    3. parse message 25%
+    ~~3. parse message 25%~~
 
-    4. request 15%
+    ~~4. request 15%~~
 
-    5. receive blocks 15%
+    ~~5. receive blocks 15%~~
 
     6. combine + verify 10%
 

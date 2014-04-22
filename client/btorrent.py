@@ -15,6 +15,8 @@ except:
     print "Please have bencode installed by running pip install bencode."
     sys.exit()
 
+BLOCK_LENGTH = 16384
+
 class torrent(object):
     ''' Torrent class'''
 
@@ -338,11 +340,6 @@ class torrent(object):
         BUFFER_SIZE = 68
         s.sendall(handshake_message)
         recv_data = s.recv(BUFFER_SIZE)
-        # print data
-        if len(recv_data) == BUFFER_SIZE:
-            print 'Recv data: ', recv_data
-        else:
-            print 'Recv data: bad data'
 
     def _send_message(self, msg_state, s):
         ''' send message to other peer
@@ -378,8 +375,7 @@ class torrent(object):
                     break
 
             begin = 0
-            length = 16384
-            msg = struct.pack('!ib3i', 13, 6, piece_index, begin, length)
+            msg = struct.pack('!ib3i', 13, 6, piece_index, begin, BLOCK_LENGTH)
             pp(msg)
             print_msg_in_hex(msg)
             s.sendall(msg)
@@ -399,6 +395,9 @@ class torrent(object):
 
     def __str__(self):
         return str(self.announce)
+
+def _save_to_file(buff, name = 'ldong_'):
+    pass
 
 def _list_of_bits_(target):
     return [__is_this_index_bit_set(target) for i in xrange(target.bit_length())]
