@@ -7,8 +7,8 @@ import struct
 import math
 import time
 from bitstring import BitArray
-
 from pprint import pprint as pp
+
 try:
     from bencode import bencode, bdecode
 except:
@@ -146,24 +146,29 @@ class torrent(object):
         s.settimeout(10)
         s.connect((ip, port))
         self._handshake_with_peer(s)
-        self._exchange_msg(s)
+        self._unpack_msg(s)
 
         # starting state
-        self._send_message('choke', s)
-        self._send_message('not interested', s)
+        # self._send_message('choke', s)
+        # self._send_message('not interested', s)
         choked = True
         interested = False
         self._set_peer_connection_state(choked, interested)
 
         while choked:
+            self._send_message('unchoke', s)
+            self._unpack_msg(s)
+
             self._send_message('interested', s)
-            self._exchange_msg(s)
+            self._unpack_msg(s)
             choked, interested = self._get_peer_connection_state()
             # print 'while current state: choked:', choked, 'interested:', interested
             time.sleep(5)
         # else:
             # print 'else: current state: choked:', choked, 'interested:', interested
             # self._set_peer_connection_state(choked, interested)
+
+        self._send_message('request', s)
 
         # final step
         s.close()
@@ -172,8 +177,8 @@ class torrent(object):
         ''' return the length of piece '''
         return self.__get_number_of_piece
 
-    def _exchange_msg(self, s):
-        ''' Exchange message from client to other peer'''
+    def _unpack_msg(self, s):
+        ''' Unpack the message sent from other peer'''
         buff = self.__get_the_buffer_from_socket(s)
         # print 'Buff length: ',len(buff)
         # pp(buff)
@@ -191,13 +196,6 @@ class torrent(object):
             else:
                 print 'msg_size: ', msg_size
                 break
-
-        # print 'self._peer_pieces_index_from_bitfield: ',
-        # pp(self._peer_pieces_index_from_bitfield)
-        # print 'self._peer_pieces_index_from_haves: '
-        # print 'length: ', len(self._peer_pieces_index_from_haves)
-        # pp(self._peer_pieces_index_from_haves)
-        # print ' -- End of exchange msg --'
 
     def __get_the_buffer_from_socket(self, s):
         ''' Combine each trunk buffer from the socket to a whole,
@@ -358,6 +356,22 @@ class torrent(object):
         elif msg_state == 'choke':
             print 'sending choke'
             msg = (3*chr(0)+chr(1)+chr(0))
+            s.sendall(msg)
+        elif msg_state == 'request':
+            print 'sending request'
+            piece_index = None
+            # pp(self._peer_pieces_index_from_bitfield)
+            for piece_index, downloaded in\
+                    self._peer_pieces_index_from_bitfield.iteritems():
+                if not downloaded:
+                    print 'piece index:', piece_index
+                    break
+
+            begin = 0
+            length = 16384
+            msg = struct.pack('!ib3i', 13, 6, piece_index, begin, length)
+            pp(msg)
+            print_msg_in_hex(msg)
             s.sendall(msg)
 
     def _parse_message(self):
