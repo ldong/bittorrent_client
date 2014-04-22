@@ -195,47 +195,75 @@ class torrent(object):
 
     def _download_file(self, s=None):
         ''' start to download the whole file, split into pieces '''
-        for piece_index, (downloaded, (start_block_index, offset, left)) in \
+        for piece_index, (downloaded, (curr_block_index, offset, left)) in \
                 self._peer_pieces_index_from_bitfield.iteritems():
             if not downloaded:
-                self.__download_piece(s, piece_index, (start_block_index, offset, left))
+                self.__download_piece(s, piece_index, curr_block_index)
 
-    def __download_piece(self, s=None, piece_index=0, block=None):
+    def __download_piece(self, s=None, piece_index=0, curr_block_index=0):
         ''' start to download each piece, split into blocks '''
         print 'download pieces: ', piece_index
-        start_block_index, offset, left = block
-        buff = ''
-        while start_block_index < self._NUMBER_OF_BLOCKS_FOR_EACH_PIECE:
-            buff += self.__download_block(s, *block)
+        print 'start block index:', curr_block_index
+        piece_buff = ''
 
-        self.__update_piece_info(start_block_index, True, *block)
+        if piece_index == self._NUMBER_OF_PIECES-1:
+            print 'download the last piece'
+            total_blocks = self._NUMBER_OF_BLOCKS_FOR_LAST_PIECE
+        else:
+            print 'download the regular piece'
+            total_blocks = self._NUMBER_OF_BLOCKS_FOR_EACH_PIECE
 
-    def __download_block(self, s=None, piece_index = 0, block_index=0, \
-            offset=0, left=BLOCK_LENGTH):
+        print '# of blocks is:', total_blocks
+        while curr_block_index < total_blocks:
+            print 'curr block index ', curr_block_index
+            piece_buff += self.__download_block(s, piece_index, curr_block_index)
+            curr_block_index += 1
+
+        self.__update_piece_info(piece_index, True, curr_block_index,\
+                total_blocks * BLOCK_LENGTH, 0)
+        print 'piece buff: ',
+        pp(piece_buff)
+        save_piece_to_file(piece_buff)
+        return piece_buff
+
+    def __download_block(self, s=None, piece_index=0, block_index=0, offset=0,\
+            left=BLOCK_LENGTH):
         ''' start to download each block '''
         print 'download blocks'
         self._send_message('request', s)
-        buff = self._unpack_msg(s)
-        # if buff != None:
-            # offset, left = 
-            # self.__update_block_info(piece_index, block_index+1)
-        return buff
+        block_buff = self._unpack_msg(s)
+        if block_buff != None:
+            offset += BLOCK_LENGTH
+            left -= BLOCK_LENGTH
+            downloaded = self.__is_curr_block_index_is_total_blocks(piece_index)
+            self.__update_block_info(piece_index, block_index, offset, left)
+        print 'block buff: ',
+        pp(block_buff)
+        return block_buff
 
     def __update_piece_info(self, piece_index = None, downloaded = None,
             start_block_index = None, offset = None, left = None):
         ''' update the piece information in bitfield '''
-        self._peer_pieces_index_from_bitfield[index] = (downloaded, \
-        (start_block_index, offset, left))
+        self._peer_pieces_index_from_bitfield[piece_index] = (downloaded, \
+                                (start_block_index, offset, left))
 
-    def __update_block_info(self, piece_index = None, start_block_index = None,\
+    def __update_block_info(self, piece_index = None, curr_block_index = None,\
             offset = None, left = None):
         ''' update the piece info on block level in bitfield '''
-        self._peer_pieces_index_from_bitfield[index] = (downloaded, \
-        (start_block_index, offset, left))
+        self._peer_pieces_index_from_bitfield[piece_index] =\
+                (self.__is_curr_block_index_is_total_blocks(piece_index), \
+                (curr_block_index, offset, left))
 
-    def _save_piece_to_file(self, prefix = AUTHOR_NAME):
-        ''' save pieces into file'''
-        pass
+    def __is_current_piece_index_last_piece(self, piece_index):
+        ''' return True or False '''
+        return piece_index == self._NUMBER_OF_PIECES-1
+
+    def __is_curr_block_index_is_total_blocks(self, piece_index):
+        ''' return if the curr piece index is the total number of blocks '''
+        if self.__is_current_piece_index_last_piece(piece_index):
+            return piece_index == self._NUMBER_OF_BLOCKS_FOR_EACH_PIECE
+        return piece_index == self._NUMBER_OF_BLOCKS_FOR_EACH_PIECE
+
 
     def __get_length_of_piece(self):
         ''' return the length of piece '''
@@ -477,6 +505,18 @@ class torrent(object):
 
     def __str__(self):
         return str(self.announce)
+
+def save_piece_to_file(piece_buff, piece_index, prefix):
+    '''save piece into individual file
+    return the name of file
+    '''
+    with open(prefix+piece_index, 'a') as piece:
+        piece.write(piece_buff)
+    return prefix+piece_index
+
+def combine_pieces_to_a_file(file_list):
+    ''' combine pieces files into one file'''
+    pass
 
 def _list_of_bits_(target):
     return [__is_this_index_bit_set(target) for i in xrange(target.bit_length())]
