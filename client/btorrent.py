@@ -37,10 +37,10 @@ class torrent(object):
         self.port = self._get_port()
         self.event = self._get_event()
         self.handshake_state = 0
-        self.peer_connection_state = self._get_peer_connection_state()
 
-        self._peer_pieces_index_from_bitfield = []
-        self._peer_pieces_index_from_haves = []
+        # both of dict are key = piece_index: value = False if not received
+        self._peer_pieces_index_from_bitfield = {}
+        self._peer_pieces_index_from_haves = {}
 
     def _get_info_hash(self):
         ''' Generate info has '''
@@ -147,13 +147,25 @@ class torrent(object):
         s.connect((ip, port))
         self._handshake_with_peer(s)
         self._exchange_msg(s)
+
+        # starting state
         self._send_message('choke', s)
         self._send_message('not interested', s)
+        choked = True
+        interested = False
+        self._set_peer_connection_state(choked, interested)
 
-        self._send_message('interested', s)
-        self._send_message('interested', s)
-        self._send_message('interested', s)
-        self._send_message('interested', s)
+        while choked:
+            self._send_message('interested', s)
+            self._exchange_msg(s)
+            choked, interested = self._get_peer_connection_state()
+            # print 'while current state: choked:', choked, 'interested:', interested
+            time.sleep(5)
+        # else:
+            # print 'else: current state: choked:', choked, 'interested:', interested
+            # self._set_peer_connection_state(choked, interested)
+
+        # final step
         s.close()
 
     def __get_length_of_piece(self):
@@ -232,20 +244,28 @@ class torrent(object):
 
         if msg_id == 0:
             # choke
-            pass
+            print 'set to choke'
+            choked, interested = self._get_peer_connection_state()
+            self._set_peer_connection_state(choked=True, interested=interested)
         elif msg_id == 1:
             # unchoke
-            pass
+            print 'set to unchoke'
+            choked, interested = self._get_peer_connection_state()
+            self._set_peer_connection_state(choked=False, interested=interested)
         elif msg_id == 2:
             # interested
-            pass
+            print 'set to interested'
+            choked, interested = self._get_peer_connection_state()
+            self._set_peer_connection_state(choked=choked,interested=False)
         elif msg_id == 3:
             # not interested
-            pass
+            print 'set to not interested'
+            choked, interested = self._get_peer_connection_state()
+            self._set_peer_connection_state(choked=choked,interested=True)
         elif msg_id == 4:
             # have
             piece_index = struct.unpack('!i', msg_buffer[1:])[0]
-            self._peer_pieces_index_from_haves.append(piece_index)
+            self._peer_pieces_index_from_haves[piece_index] = False
             # print 'have, piece_index: ',
             # pp(piece_index)
         elif msg_id == 5:
@@ -253,8 +273,8 @@ class torrent(object):
             bitfield_length = prefix - 1
             bitfield_payload = struct.unpack('!'+str(bitfield_length)+'s',
                     msg_buffer[1:1+int(bitfield_length)])[0]
-            self._peer_pieces_index_from_bitfield = [index for (index, exist) \
-                    in enumerate(BitArray(bytes= bitfield_payload)) if exist]
+            self._peer_pieces_index_from_bitfield = {index: False for (index, exist) \
+                    in enumerate(BitArray(bytes= bitfield_payload)) if exist}
 
             # print 'bitfield length: ', bitfield_length
             # print 'bitfield payload: ', bitfield_payload
@@ -328,15 +348,15 @@ class torrent(object):
             7 - piece
             8 - cancel '''
         if msg_state == 'interested':
-            print 'interested'
+            print 'sending interested'
             msg = (3*chr(0)+chr(1)+chr(2))
             s.sendall(msg)
         elif msg_state == 'not interested':
-            print 'not interested'
+            print 'sending not interested'
             msg = (3*chr(0)+chr(1)+chr(3))
             s.sendall(msg)
         elif msg_state == 'choke':
-            print 'choke'
+            print 'sending choke'
             msg = (3*chr(0)+chr(1)+chr(0))
             s.sendall(msg)
 
@@ -344,11 +364,14 @@ class torrent(object):
         ''' parse message received from other peer '''
         pass
 
+    def _set_peer_connection_state(self, choked=True, interested=False):
+        ''' return a tuple of states: chocked or not and interested or not'''
+        self.__peer_connection_state = (choked, interested)
+
+
     def _get_peer_connection_state(self):
         ''' return a tuple of states: chocked or not and interested or not'''
-        chocked = True
-        interested = False
-        return (chocked, interested)
+        return self.__peer_connection_state
 
     def __str__(self):
         return str(self.announce)
