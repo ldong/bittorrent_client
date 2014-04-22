@@ -4,8 +4,7 @@ bittorrent_client
 This is another bit torrent client implemented by using python, yet, it is a class project.  :]
 
 
-1.
-TODO: write a torrent client using python for class project
+1. TODO: write a torrent client using python for class project
 
     BitTorrent Project Breakdown:
 
@@ -19,7 +18,7 @@ TODO: write a torrent client using python for class project
 
     ~~5. receive blocks 15%~~
 
-    6. combine + verify 10%
+    ~~6. combine + verify 10%~~
 
     Extra Credit
 
@@ -33,31 +32,30 @@ TODO: write a torrent client using python for class project
 
     5. incoming + (1)
 
-2.
-Reference & resources:
+2. Only works for torrenting single torrent
+
+    Download uTorrent, select one single file from local machine and seed it.
+
+    install required libs
+    ```
+    pip install bencode
+    pip install requests
+    pip install bitstring
+    ```
+    then run `./client.py file_name.torrent`
+
+    after finishing download, a file_name will appear in the current directory
+
+3. Reference & resources:
 
     ```
-    Python:
+    Python(Recommended):
     http://www.kristenwidman.com/blog/how-to-write-a-bittorrent-client-part-1/
     http://www.kristenwidman.com/blog/how-to-write-a-bittorrent-client-part-2/
 
     http://phsteve.tumblr.com/post/67371461460/bittorrent
-    https://github.com/staceysern/bittorrent
-
-    http://zachdex.tumblr.com/post/36792592990/bitttorrent-client-lessons
-    https://github.com/zdexter/py-bittorrent
-    https://github.com/phsteve/bt
-    https://github.com/nikitan/bencode
-    https://github.com/jcul/bencode
-    http://i-tools.org/torrent
     http://jonas.nitro.dk/bittorrent/bittorrent-rfc.html
-
-    Others:http://www.cs.swarthmore.edu/~aviv/classes/f12/cs43/labs/lab5/lab5.pdf
+    https://wiki.theory.org/BitTorrentSpecification
 
     ```
 
-3.
-    ```
-    pip install bencode
-    pip install requests
-    ```
