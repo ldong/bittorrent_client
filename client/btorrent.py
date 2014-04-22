@@ -169,6 +169,7 @@ class torrent(object):
             # self._set_peer_connection_state(choked, interested)
 
         self._send_message('request', s)
+        self._unpack_msg(s)
 
         # final step
         s.close()
@@ -270,7 +271,7 @@ class torrent(object):
             # bitfield
             bitfield_length = prefix - 1
             bitfield_payload = struct.unpack('!'+str(bitfield_length)+'s',
-                    msg_buffer[1:1+int(bitfield_length)])[0]
+                    msg_buffer[1:1+bitfield_length])[0]
             self._peer_pieces_index_from_bitfield = {index: False for (index, exist) \
                     in enumerate(BitArray(bytes= bitfield_payload)) if exist}
 
@@ -278,8 +279,17 @@ class torrent(object):
             # print 'bitfield payload: ', bitfield_payload
         elif msg_id == 6:
             # request
+            print 'recv request'
             pass
         elif msg_id == 7:
+            print 'recv piece'
+            # print 'prefix:', prefix
+            block_length = prefix - 9
+            # print 'block_length: ', block_length
+            # print 'from: ', 8+block_length
+            index, begin, block = struct.unpack('!2i'+str(block_length)+'s',
+                    msg_buffer[1:9+block_length])
+
             # piece
             pass
         elif msg_id == 8:
