@@ -147,6 +147,13 @@ class torrent(object):
         s.connect((ip, port))
         self._handshake_with_peer(s)
         self._exchange_msg(s)
+        self._send_message('choke', s)
+        self._send_message('not interested', s)
+
+        self._send_message('interested', s)
+        self._send_message('interested', s)
+        self._send_message('interested', s)
+        self._send_message('interested', s)
         s.close()
 
     def __get_length_of_piece(self):
@@ -222,7 +229,6 @@ class torrent(object):
     def _extract_msg(self, msg_buffer, prefix):
         ''' extract msg from the whole buffer '''
         msg_id = ord(struct.unpack('!c', msg_buffer[0])[0])
-        msg_payload = None
 
         if msg_id == 0:
             # choke
@@ -267,8 +273,6 @@ class torrent(object):
         else:
             pass
 
-        return msg_payload
-
     def _handshake_with_peer(self, s):
         ''' transmit a handshake to other peer '''
         handshake_message = (chr(19)+"BitTorrent protocol"+8*chr(0) +
@@ -312,7 +316,7 @@ class torrent(object):
         else:
             print 'Recv data: bad data'
 
-    def _send_message(self, msg_state):
+    def _send_message(self, msg_state, s):
         ''' send message to other peer
             0 - choke            no payload
             1 - unchoke          no payload
@@ -323,19 +327,18 @@ class torrent(object):
             6 - request
             7 - piece
             8 - cancel '''
-        msg_length_prefix = {'keep-alive': '0000', 'choke': '00010',
-                            'unchoke': '00011', 'interested': '00012',
-                            'not interested': '00013', 'have': '0005',
-                            'bitfield': '0001', 'request' : '0013',
-                            'piece': '0009', 'cancel': '0013',
-                            'port' : '0003' }
-
-        if(msg_state == 'keep-alive' or
-                msg_state == 'choke' or
-                msg_state == 'unchoke' or
-                msg_state == 'interested' or
-                msg_state == 'not interested'):
-            return msg_length_prefix[msg_state]
+        if msg_state == 'interested':
+            print 'interested'
+            msg = (3*chr(0)+chr(1)+chr(2))
+            s.sendall(msg)
+        elif msg_state == 'not interested':
+            print 'not interested'
+            msg = (3*chr(0)+chr(1)+chr(3))
+            s.sendall(msg)
+        elif msg_state == 'choke':
+            print 'choke'
+            msg = (3*chr(0)+chr(1)+chr(0))
+            s.sendall(msg)
 
     def _parse_message(self):
         ''' parse message received from other peer '''
